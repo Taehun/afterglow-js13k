@@ -1,6 +1,5 @@
-// E2E 플레이테스트 — 빌드 산출물을 실제 브라우저에서 3레벨 전부 클리어한다.
-// 스모크보다 강한 검증: 아치 드로잉→망아지 횡단→구조→레벨 전환→비 우산까지
-// 전체 코어 루프가 실제로 동작하는지 확인하고 단계별 스크린샷을 남긴다.
+// E2E 플레이테스트 — SUNSHOWER 5레벨을 설계 정답 수순으로 전부 클리어한다.
+// 레벨 설계가 실제로 풀리는지(솔버 검증)와 콘솔 에러 0을 함께 보장한다.
 //
 // 사용: node tools/playtest.mjs [스크린샷출력디렉토리]
 
@@ -33,8 +32,18 @@ const exe = findExe([
 ]);
 if (!exe) { console.error('Chromium 실행 파일 없음'); process.exit(1); }
 
+// 설계 정답 수순 (levels.js와 동기 유지)
+const SOLUTIONS = [
+  'RRRRDRRU',
+  'RRRRRRDRRU',
+  'RRRDD',
+  'DDDRRR',
+  'RRRRRURDDDRR',
+];
+/** @type {Record<string, string>} */
+const KEY = { R: 'ArrowRight', L: 'ArrowLeft', U: 'ArrowUp', D: 'ArrowDown' };
+
 const browser = await chromium.launch({ executablePath: exe, headless: true });
-// 뷰포트 960×540 = 월드 1:1 스케일 → 스크린 좌표 == 월드 좌표
 const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
 /** @type {string[]} */
 const errors = [];
@@ -42,30 +51,10 @@ page.on('console', m => { if (m.type() === 'error') errors.push(`console.error: 
 page.on('pageerror', e => errors.push(`uncaught: ${e}`));
 
 await page.goto('file://' + distHtml);
-await page.waitForFunction('typeof arcdbg == "function"', undefined, { timeout: 5000 });
-
-const dbg = () => page.evaluate('arcdbg()');
+await page.waitForFunction('typeof sundbg == "function"', undefined, { timeout: 5000 });
+const dbg = () => page.evaluate('sundbg()');
 /** @param {string} name */
 const shot = name => page.screenshot({ path: path.join(shotDir, name + '.png') });
-const tap = async (x = 480, y = 270) => { await page.mouse.click(x, y); await page.waitForTimeout(250); };
-// 오버레이 전환 — win(0.7s)/intro(0.4s)의 오탭 방지 딜레이를 기다린 뒤 탭
-const advance = async () => { await page.waitForTimeout(1000); await tap(); };
-/**
- * 아치 드래그 @param {number} x0 @param {number} y0 @param {number} x1 @param {number} y1
- */
-const drag = async (x0, y0, x1, y1) => {
-  await page.mouse.move(x0, y0);
-  await page.mouse.down();
-  for (let i = 1; i <= 10; i++) {
-    await page.mouse.move(x0 + ((x1 - x0) * i) / 10, y0 + ((y1 - y0) * i) / 10);
-    await page.waitForTimeout(30);
-  }
-  await page.mouse.up();
-  await page.waitForTimeout(150);
-};
-/** state가 될 때까지 대기 @param {string} s @param {number} ms */
-const waitState = (s, ms) =>
-  page.waitForFunction(`arcdbg().state == ${JSON.stringify(s)}`, undefined, { timeout: ms });
 
 let ok = true;
 /** @param {boolean} cond @param {string} msg */
@@ -75,50 +64,40 @@ const check = (cond, msg) => {
 };
 
 try {
-  // ── 타이틀
-  await page.waitForTimeout(700);
-  await shot('1-title');
-  check((await dbg()).state === 'title', '타이틀 화면');
+  await page.waitForTimeout(600);
+  await shot('1-level1-start');
 
-  // ── 레벨 1: 다리
-  await tap();               // title → intro
-  await page.waitForTimeout(500);
-  await shot('2-intro');
-  await advance();           // intro → play
-  await waitState('play', 3000);
-  await drag(280, 430, 600, 430);
-  await page.waitForTimeout(4000);
-  await shot('3-level1-crossing');
-  await waitState('win', 30000);
-  await shot('4-level1-win');
-  check(true, '레벨 1 클리어 (다리)');
+  for (let i = 0; i < SOLUTIONS.length; i++) {
+    const d0 = await dbg();
+    check(d0.level === i && d0.state === 'play', `레벨 ${i + 1} 시작`);
+    for (const mv of SOLUTIONS[i]) {
+      await page.keyboard.press(KEY[mv]);
+      await page.waitForTimeout(190);
+    }
+    if (i === 0) await shot('2-level1-rainbow');
+    await page.waitForFunction(`sundbg().state == "win" || sundbg().state == "end"`, undefined, { timeout: 4000 });
+    check(true, `레벨 ${i + 1} 클리어 (${SOLUTIONS[i].length}수)`);
+    if (i === 2) await shot('3-level3-win');
+    await page.waitForTimeout(1000);
+    await page.mouse.click(480, 480); // 카드 진행 (카드 밖 탭)
+    await page.waitForTimeout(400);
+  }
 
-  // ── 레벨 2: 경사로
-  await advance();           // win → intro
-  await advance();           // intro → play
-  await waitState('play', 3000);
-  await drag(320, 460, 560, 290);
-  await waitState('win', 40000);
-  await shot('5-level2-win');
-  check(true, '레벨 2 클리어 (경사로)');
+  const dEnd = await dbg();
+  await shot('4-end');
+  check(dEnd.state === 'end', '전체 클리어 (엔딩 화면)');
 
-  // ── 레벨 3: 비 — 다리 + 우산
-  await advance();           // win → intro
-  await advance();           // intro → play
-  await waitState('play', 3000);
-  await drag(240, 440, 720, 440);  // 다리
-  await drag(300, 340, 660, 340);  // 우산
-  await page.waitForTimeout(5000);
-  await shot('6-level3-rain');
-  await waitState('win', 45000);
-  await shot('7-level3-win');
-  check(true, '레벨 3 클리어 (비+우산)');
-
-  // ── 엔딩
-  await advance();
+  // Undo·재시작 동작 확인 (엔딩에서 재시작 → 한 수 → Z 언두)
+  await page.mouse.click(480, 480);
   await page.waitForTimeout(400);
-  await shot('8-end');
-  check((await dbg()).state === 'end', '엔딩 화면');
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(250);
+  const m1 = (await dbg()).ux;
+  await page.keyboard.press('KeyZ');
+  await page.waitForTimeout(250);
+  const m2 = (await dbg()).ux;
+  check(m1 === 2 && m2 === 1, 'Undo(Z) 동작');
+  await shot('5-restart');
 } catch (e) {
   ok = false;
   console.error('✖ 진행 실패:', /** @type {Error} */ (e).message);
