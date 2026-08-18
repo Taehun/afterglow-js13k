@@ -122,3 +122,14 @@ export const drawFx = () => {
 };
 
 export const clearFx = () => { parts = []; };
+
+/** 5각 별 경로 — fill/stroke는 호출자가 (원점 중심) @param {number} r */
+export const starPath = r => {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 ? r * 0.43 : r;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    i ? ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath();
+};

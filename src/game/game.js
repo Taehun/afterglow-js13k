@@ -6,9 +6,9 @@ import { ctx, W, H } from '../engine/view.js';
 import { ptr, keys, keysJust } from '../engine/input.js';
 import { save, load } from '../engine/save.js';
 import { S } from '../engine/sfx.js';
-import { VW, VH, AW, AH, RAINBOW } from './const.js';
+import { VW, VH, AW, AH, CR, insideIsle, RAINBOW } from './const.js';
 import { cam, updateCam, beginWorld, endWorld, overdrawX, overdrawY } from './cam.js';
-import { updateFx, drawFx, clearFx, sparkle, ring } from './fx.js';
+import { updateFx, drawFx, clearFx, sparkle, ring, starPath } from './fx.js';
 import {
   updateMusic, music, toggleMute, glissNote, rescueChord, winFanfare, eraseNote,
 } from './music.js';
@@ -50,8 +50,8 @@ let beamT = 0;   // 프리즘 광선 쿨다운
 let beamsFx = [];
 /** 색을 되찾은 초원 셀들 @type {Set<string>} */
 let healed = new Set();
-// 아레나를 덮는 총 셀 수 — 치유율(%)의 분모
-const TOTAL_CELLS = (Math.floor((AW * 2 - 1) / 96) + 1) * (Math.floor((AH * 2 - 1) / 96) + 1);
+// 섬을 덮는 총 셀 수 — 치유율(%)의 분모 (둥근 모서리 면적 보정)
+const TOTAL_CELLS = Math.round((4 * AW * AH - (4 - Math.PI) * CR * CR) / (96 * 96));
 let milestone = 0; // 다음 마일스톤 인덱스 (25/50/75/100%)
 const healedPct = () => Math.min(100, Math.round((healed.size / TOTAL_CELLS) * 100));
 
@@ -92,7 +92,7 @@ const dnum = (x, y, v) => {
 
 const cellKey = (/** @type {number} */ x, /** @type {number} */ y) => `${Math.floor(x / 96)},${Math.floor(y / 96)}`;
 const heal = (/** @type {number} */ x, /** @type {number} */ y) => {
-  if (Math.abs(x) < AW && Math.abs(y) < AH) healed.add(cellKey(x, y));
+  if (insideIsle(x, y)) healed.add(cellKey(x, y));
 };
 
 /** @param {import('./mobs.js').Mob} m */
@@ -404,17 +404,25 @@ export const update = dt => {
 /** 유사난수 @param {number} a @param {number} b */
 const rnd = (a, b) => Math.abs(Math.sin(a * 12.9898 + b * 78.233) * 43758.5453) % 1;
 
+/** 구름 퍼프 (fillStyle은 호출자가) @param {number} x @param {number} y @param {number} s */
+const puff = (x, y, s) => {
+  for (const [ox2, oy2, cr2] of [[-36, 4, 21], [0, -7, 29], [32, 3, 23], [9, 9, 26]]) {
+    ctx.beginPath();
+    ctx.arc(x + ox2 * s, y + oy2 * s, cr2 * s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
 // 카메라 중심 (아레나 클램프 — 장벽 너머는 66px까지만 보인다)
 let camX = 0, camY = 0;
 
 export const draw = () => {
   updateCam();
-  camX = Math.max(-AW + VW / 2 - 66, Math.min(AW - VW / 2 + 66, P.x));
-  camY = Math.max(-AH + VH / 2 - 66, Math.min(AH - VH / 2 + 66, P.y));
+  camX = Math.max(-AW + VW / 2 - 130, Math.min(AW - VW / 2 + 130, P.x));
+  camY = Math.max(-AH + VH / 2 - 130, Math.min(AH - VH / 2 + 130, P.y));
   beginWorld();
   ctx.translate(VW / 2 - camX, VH / 2 - camY);
-  drawMeadow();
-  drawStormWall();
+  drawScene();
   drawTrail(t);
   drawLoot(t);
   drawItems(t);
@@ -443,13 +451,7 @@ export const draw = () => {
     ctx.save();
     ctx.translate(hx, hy);
     ctx.rotate(t * 4 + i);
-    ctx.beginPath();
-    for (let p = 0; p < 10; p++) {
-      const r = p % 2 ? 3 : 7;
-      const pa = (p * Math.PI) / 5;
-      p ? ctx.lineTo(Math.cos(pa) * r, Math.sin(pa) * r) : ctx.moveTo(Math.cos(pa) * r, Math.sin(pa) * r);
-    }
-    ctx.closePath();
+    starPath(7);
     ctx.fill();
     ctx.restore();
   }
@@ -480,13 +482,7 @@ export const draw = () => {
     ctx.save();
     ctx.translate(b.x, b.y);
     ctx.rotate(t * 10);
-    ctx.beginPath();
-    for (let i = 0; i < 10; i++) {
-      const r = i % 2 ? 3 : 7;
-      const a = (i * Math.PI) / 5;
-      i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-    }
-    ctx.closePath();
+    starPath(7);
     ctx.fill();
     ctx.restore();
   }
@@ -535,17 +531,155 @@ export const draw = () => {
   else if (!started) drawHint();
 };
 
+/** 섬 실루엣 패스 (둥근 슬랩) @param {number} inset @param {number} [dy] */
+const islePath = (inset, dy = 0) => {
+  ctx.beginPath();
+  ctx.roundRect(-AW + inset, -AH + inset + dy, (AW - inset) * 2, (AH - inset) * 2, Math.max(20, CR - inset));
+};
+
 /**
- * 황혼의 초원 — 폭풍에 색이 바랬지만 여전히 '초원'으로 읽히는 세이지 그린.
- * 구릉 음영·구름 그림자·소품(y-정렬)이 평면을 입체로 보이게 한다.
- * healed 셀은 색을 되찾는다: 풀이 살아나고 꽃이 핀다.
+ * 하늘 섬 씬 — 해질녘 하늘 위에 뜬 초원 슬랩.
+ * 하늘·아래를 흐르는 구름·원경 부유섬 → 섬 그늘 → 절벽 측면 → 표면 →
+ * (클립) 초원 디테일 → 테두리·매달린 풀·무지개 폭포.
  */
-const drawMeadow = () => {
+const drawScene = () => {
   const ox = overdrawX(), oy = overdrawY();
   const x0 = camX - VW / 2 - ox, y0 = camY - VH / 2 - oy;
   const w = VW + ox * 2, h = VH + oy * 2;
-  ctx.fillStyle = '#47584c';
+
+  // ── 해질녘 하늘 (월드 y 고정 그라디언트 — 섬 위쪽이 밝은 하늘, 아래쪽이 노을)
+  const sg = ctx.createLinearGradient(0, -AH - 640, 0, AH + 720);
+  sg.addColorStop(0, '#6c7cbd');
+  sg.addColorStop(0.55, '#a98fc9');
+  sg.addColorStop(1, '#e5b4bb');
+  ctx.fillStyle = sg;
   ctx.fillRect(x0, y0, w, h);
+
+  // 섬 '아래'를 흐르는 구름들 (+ 간간이 폭풍의 먹구름)
+  for (let gx = Math.floor(x0 / 460); gx <= (x0 + w) / 460; gx++) {
+    for (let gy = Math.floor(y0 / 460); gy <= (y0 + h) / 460; gy++) {
+      const r = rnd(gx * 9, gy * 13);
+      if (r < 0.45) continue;
+      const cxx = gx * 460 + r * 300 + Math.sin(t * 0.07 + r * 9) * 120 + t * 9;
+      const cyy = gy * 460 + ((r * 977) % 1) * 300 + Math.sin(t * 0.2 + gx) * 8;
+      const dark = r > 0.9;
+      ctx.fillStyle = dark ? 'rgba(44,38,70,.6)' : `rgba(255,246,244,${0.5 + r * 0.25})`;
+      puff(cxx, cyy, 0.55 + r * 0.5);
+    }
+  }
+
+  // 섬 기슭을 감싸는 상시 구름 — "떠 있음"을 어느 가장자리에서든 읽게 한다
+  for (const [ex, ey, es, i] of [
+    [-AW - 105, -AH * 0.35, 1.15, 0], [AW + 95, AH * 0.28, 1.3, 1], [AW + 115, -AH * 0.5, 0.95, 2],
+    [-AW * 0.45, AH + 105, 1.5, 3], [AW * 0.5, AH + 120, 1.25, 4], [AW * 0.05, -AH - 100, 1.1, 5],
+    [-AW - 115, AH * 0.75, 1.05, 6],
+  ]) {
+    ctx.fillStyle = `rgba(255,248,246,${0.75 - i * 0.04})`;
+    puff(ex, ey + Math.sin(t * 0.35 + i * 2.1) * 9, es * 1.15);
+  }
+
+  // 원경 부유섬 2개 — 섬 아래/위 (세로 화면과 가장자리 오버슛에서 보인다)
+  for (const [ix, iy, is] of [[-380, AH + 460, 0.5], [430, -AH - 420, 0.4]]) {
+    const bob = Math.sin(t * 0.25 + ix) * 7;
+    ctx.save();
+    ctx.translate(ix, iy + bob);
+    ctx.scale(is, is);
+    ctx.globalAlpha = 0.88;
+    ctx.fillStyle = '#4a3a30';
+    ctx.beginPath();
+    ctx.roundRect(-190, -60 + 22, 380, 120, 60);
+    ctx.fill();
+    ctx.fillStyle = '#44564a';
+    ctx.beginPath();
+    ctx.roundRect(-190, -60, 380, 120, 60);
+    ctx.fill();
+    for (let b = 0; b < 3; b++) {
+      ctx.fillStyle = RAINBOW[b * 2].replace(')', ' / .3)');
+      ctx.fillRect(-30 + b * 9, 58, 4, 90 + Math.sin(t + b) * 8);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // ── 섬이 하늘에 드리우는 그늘 → 절벽 측면 → 표면
+  ctx.fillStyle = 'rgba(20,16,44,.16)';
+  islePath(0, 96);
+  ctx.fill();
+  const cliff = ctx.createLinearGradient(0, AH - 160, 0, AH + 36);
+  cliff.addColorStop(0, '#5a463a');
+  cliff.addColorStop(1, '#382b23');
+  ctx.fillStyle = cliff;
+  islePath(0, 32);
+  ctx.fill();
+  // 측면 바위 결
+  for (let x = Math.floor(Math.max(x0, -AW) / 90) * 90; x <= Math.min(x0 + w, AW); x += 90) {
+    const r = rnd(x, 3);
+    ctx.fillStyle = 'rgba(30,22,18,.5)';
+    ctx.beginPath();
+    ctx.ellipse(x + r * 40, AH + 10 + r * 14, 14 + r * 12, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#47584c';
+  islePath(0);
+  ctx.fill();
+
+  // ── 초원 디테일 (섬 안으로 클립)
+  ctx.save();
+  islePath(4);
+  ctx.clip();
+  drawMeadow(x0, y0, w, h);
+  ctx.restore();
+
+  // ── 테두리: 흙 립(전 둘레) + 안쪽 하이라이트 + 매달린 풀 + 무지개 폭포
+  ctx.strokeStyle = 'rgba(56,43,35,.85)';
+  ctx.lineWidth = 4;
+  islePath(1);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.1)';
+  ctx.lineWidth = 4;
+  islePath(6);
+  ctx.stroke();
+  // 매달린 풀 — 아래·좌·우 직선 구간 (중력 방향으로 늘어진다)
+  ctx.lineCap = 'round';
+  /** @param {number} px3 @param {number} py3 @param {number} seed */
+  const tuft = (px3, py3, seed) => {
+    ctx.strokeStyle = 'rgba(58,76,58,.9)';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      ctx.moveTo(px3 + i * 4, py3);
+      ctx.quadraticCurveTo(px3 + i * 4 + 1, py3 + 8, px3 + i * 4 + Math.sin(t * 1.5 + i + seed * 9) * 3, py3 + 14 + (i % 2) * 5);
+    }
+    ctx.stroke();
+  };
+  for (let x = Math.floor(Math.max(x0, -AW + CR) / 130) * 130; x <= Math.min(x0 + w, AW - CR); x += 130) {
+    tuft(x + rnd(x, 7) * 50, AH - 1, rnd(x, 7));
+  }
+  for (let y = Math.floor(Math.max(y0, -AH + CR) / 150) * 150; y <= Math.min(y0 + h, AH - CR); y += 150) {
+    tuft(AW - 8 - rnd(y, 3) * 6, y + rnd(y, 5) * 50, rnd(y, 3));
+    tuft(-AW - 2 + rnd(y, 9) * 6, y + rnd(y, 11) * 50, rnd(y, 9));
+  }
+  for (const wx of [-AW * 0.42, AW * 0.47]) {
+    for (let b = 0; b < 3; b++) {
+      const sway = Math.sin(t * 2.2 + b * 2) * 1.6;
+      const fg = ctx.createLinearGradient(0, AH, 0, AH + 170);
+      fg.addColorStop(0, RAINBOW[b * 2].replace(')', ' / .55)'));
+      fg.addColorStop(1, RAINBOW[b * 2].replace(')', ' / 0)'));
+      ctx.fillStyle = fg;
+      ctx.fillRect(wx - 5 + b * 4 + sway, AH - 4, 3.2, 174);
+    }
+    // 낙수 물보라
+    ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.3 * Math.sin(t * 6 + wx)})`;
+    ctx.fillRect(wx - 2 + Math.sin(t * 9) * 4, AH + 150 + Math.sin(t * 5) * 12, 2.4, 2.4);
+  }
+};
+
+/**
+ * 초원 디테일 — 구릉 음영, healed 패치·나비, 꽃·풀, 구름 그림자, 번개.
+ * (drawScene이 섬 클립 안에서 호출)
+ * @param {number} x0 @param {number} y0 @param {number} w @param {number} h
+ */
+const drawMeadow = (x0, y0, w, h) => {
 
   // 구릉 음영 — 완만한 언덕의 명암 (정적 해시 배치)
   for (let gx = Math.floor(x0 / 384); gx <= (x0 + w) / 384; gx++) {
@@ -673,52 +807,6 @@ const drawMeadow = () => {
   }
 };
 
-/** 폭풍 장벽 — 초원의 끝. 그 밖은 색을 삼킨 폭풍이다. */
-const drawStormWall = () => {
-  const ox = overdrawX(), oy = overdrawY();
-  const x0 = camX - VW / 2 - ox, y0 = camY - VH / 2 - oy;
-  const w = VW + ox * 2, h = VH + oy * 2;
-  ctx.fillStyle = '#171226';
-  if (x0 < -AW) ctx.fillRect(x0, y0, -AW - x0, h);
-  if (x0 + w > AW) ctx.fillRect(AW, y0, x0 + w - AW, h);
-  const ix0 = Math.max(x0, -AW), ix1 = Math.min(x0 + w, AW);
-  if (y0 < -AH) ctx.fillRect(ix0, y0, ix1 - ix0, -AH - y0);
-  if (y0 + h > AH) ctx.fillRect(ix0, AH, ix1 - ix0, y0 + h - AH);
-
-  // 경계 소용돌이 블롭 — 장벽이 살아 움직인다
-  ctx.fillStyle = '#221b3a';
-  const blob = (/** @type {number} */ bx, /** @type {number} */ by, /** @type {number} */ i) => {
-    ctx.beginPath();
-    ctx.arc(bx + Math.sin(t * 0.9 + i * 2.7) * 9, by + Math.cos(t * 0.7 + i * 1.9) * 7, 30 + (i % 3) * 9, 0, Math.PI * 2);
-    ctx.fill();
-  };
-  if (y0 < -AH + 40) for (let x = Math.floor(ix0 / 120) * 120; x <= ix1; x += 120) blob(x, -AH, x / 120);
-  if (y0 + h > AH - 40) for (let x = Math.floor(ix0 / 120) * 120; x <= ix1; x += 120) blob(x, AH, x / 120 + 5);
-  const iy0 = Math.max(y0, -AH), iy1 = Math.min(y0 + h, AH);
-  if (x0 < -AW + 40) for (let y = Math.floor(iy0 / 120) * 120; y <= iy1; y += 120) blob(-AW, y, y / 120 + 9);
-  if (x0 + w > AW - 40) for (let y = Math.floor(iy0 / 120) * 120; y <= iy1; y += 120) blob(AW, y, y / 120 + 13);
-
-  // 내연 글로우 라인 + 간헐 번개
-  ctx.strokeStyle = `rgba(150,120,220,${0.22 + 0.1 * Math.sin(t * 2.1)})`;
-  ctx.lineWidth = 3;
-  ctx.strokeRect(-AW, -AH, AW * 2, AH * 2);
-  const lp = t % 2.9;
-  if (lp < 0.1) {
-    const r = rnd((t / 2.9) | 0, 7);
-    const side = (r * 4) | 0;
-    const bx = side < 2 ? (r * 2 - 1) * AW : side === 2 ? -AW : AW;
-    const by = side === 0 ? -AH : side === 1 ? AH : ((r * 7919) % 1 * 2 - 1) * AH;
-    ctx.strokeStyle = 'rgba(220,200,255,.85)';
-    ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    ctx.moveTo(bx, by);
-    ctx.lineTo(bx + 18, by + 24);
-    ctx.lineTo(bx - 6, by + 40);
-    ctx.lineTo(bx + 12, by + 62);
-    ctx.stroke();
-  }
-};
-
 /**
  * 높이 있는 소품 수집 — 나무/덤불/바위/억새. healed 셀에선 소생한다.
  * @param {{y:number, f:() => void}[]} scene
@@ -734,7 +822,7 @@ const collectProps = scene => {
       if (r > 0.3) continue;
       const px2 = gx * G + rnd(gx, gy * 3) * (G - 60) + 30;
       const py2 = gy * G + rnd(gy * 3, gx) * (G - 60) + 30;
-      if (Math.abs(px2) > AW - 24 || Math.abs(py2) > AH - 20) continue; // 장벽 밖 소품 없음
+      if (!insideIsle(px2, py2, 46)) continue; // 섬 밖 소품 없음
       const alive = healed.has(cellKey(px2, py2));
       if (r < 0.05) scene.push({ y: py2, f: () => tree(px2, py2, alive, r) });
       else if (r < 0.11) scene.push({ y: py2, f: () => bush(px2, py2, alive, r) });
@@ -1023,7 +1111,8 @@ const drawHint = () => {
   ctx.fillText('The storm drank the colors of the world.', W / 2, H * 0.68);
   ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 3);
   ctx.fillStyle = '#ffd9e8';
-  ctx.font = `700 ${Math.max(14, H * 0.032)}px system-ui, sans-serif`;
+  // 세로 화면에서도 잘리지 않도록 폭 기준으로도 클램프
+  ctx.font = `700 ${Math.max(12, Math.min(H * 0.032, W * 0.034))}px system-ui, sans-serif`;
   ctx.fillText('Gallop, last unicorn — your afterglow burns them back', W / 2, H * 0.68 + H * 0.055);
   ctx.globalAlpha = 0.8;
   ctx.fillStyle = '#bcd9c2';

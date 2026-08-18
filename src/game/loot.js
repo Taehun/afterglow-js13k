@@ -2,6 +2,7 @@
 
 import { ctx } from '../engine/view.js';
 import { P } from './player.js';
+import { starPath } from './fx.js';
 import { stats } from './stats.js';
 
 /** @typedef {{x:number, y:number, hue:number, vx:number, vy:number, heart:boolean}} Shard */
@@ -165,13 +166,7 @@ export const drawItems = t => {
       }
     } else if (it.kind === STARS) { // 별 소나기
       ctx.fillStyle = '#ffd76e';
-      ctx.beginPath();
-      for (let i = 0; i < 10; i++) {
-        const r = i % 2 ? 3.2 : 7.5;
-        const a = -Math.PI / 2 + (i * Math.PI) / 5;
-        i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-      }
-      ctx.closePath();
+      starPath(7.5);
       ctx.fill();
     } else { // 하트
       ctx.fillStyle = '#ff6b81';

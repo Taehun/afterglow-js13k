@@ -5,9 +5,35 @@
 export const VW = 960;
 export const VH = 540;
 
-// 아레나 반경 — 초원은 유한하고, 그 밖은 폭풍이다 (중심 0,0)
-export const AW = 1120;
-export const AH = 720;
+// 하늘 섬 — 초원은 하늘에 떠 있는 작은 섬이다 (중심 0,0)
+export const AW = 880;   // 섬 반폭
+export const AH = 570;   // 섬 반높이
+export const CR = 260;   // 섬 모서리 반경 (둥근 슬랩 실루엣)
+
+/**
+ * 섬 안으로 클램프 (둥근 모서리 포함) @param {number} x @param {number} y @param {number} m 여백
+ * @returns {[number, number]}
+ */
+export const clampIsle = (x, y, m) => {
+  let cx = Math.max(-AW + m, Math.min(AW - m, x));
+  let cy = Math.max(-AH + m, Math.min(AH - m, y));
+  const kx = AW - CR, ky = AH - CR;
+  const qx = Math.abs(cx) - kx, qy = Math.abs(cy) - ky;
+  if (qx > 0 && qy > 0) {
+    const d = Math.hypot(qx, qy), lim = CR - m;
+    if (d > lim) {
+      cx = Math.sign(cx) * (kx + (qx / d) * lim);
+      cy = Math.sign(cy) * (ky + (qy / d) * lim);
+    }
+  }
+  return [cx, cy];
+};
+
+/** 섬 내부인가 @param {number} x @param {number} y @param {number} [m] */
+export const insideIsle = (x, y, m = 0) => {
+  const [cx, cy] = clampIsle(x, y, m);
+  return Math.abs(cx - x) < 0.5 && Math.abs(cy - y) < 0.5;
+};
 
 // ── 아치 드로잉 ────────────────────────────────────────────────────────────
 export const SNAP = 20;         // 끝점 스냅 그리드 (px)

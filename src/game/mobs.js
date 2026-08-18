@@ -4,7 +4,7 @@
 // 시간이 갈수록: 스폰 가속, 체력·이속 증가, 강한 종 해금, 60초마다 서지.
 
 import { ctx } from '../engine/view.js';
-import { AW, AH } from './const.js';
+import { clampIsle } from './const.js';
 import { P } from './player.js';
 import { sparkle, poof } from './fx.js';
 
@@ -60,9 +60,8 @@ const ringSpawn = (type, elapsed) => {
   for (let i = 0; i < 4; i++) {
     const a = Math.random() * Math.PI * 2;
     const d = 570 + Math.random() * 90;
-    const x = Math.max(-AW + 30, Math.min(AW - 30, P.x + Math.cos(a) * d));
-    const y = Math.max(-AH + 30, Math.min(AH - 30, P.y + Math.sin(a) * d));
-    // 클램프로 시야 안에 떨어지면 다른 각도로 재시도 (벽에 붙어 있을 때)
+    const [x, y] = clampIsle(P.x + Math.cos(a) * d, P.y + Math.sin(a) * d, 34);
+    // 클램프로 시야 안에 떨어지면 다른 각도로 재시도 (가장자리에 붙어 있을 때)
     if (Math.hypot(x - P.x, y - P.y) > 500 || i === 3) {
       make(type, x, y, elapsed);
       return;

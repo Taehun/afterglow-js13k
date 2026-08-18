@@ -2,7 +2,7 @@
 // 잔광이 곧 주무기: 달려야 화력이 나온다. 월드 좌표.
 
 import { ctx } from '../engine/view.js';
-import { RAINBOW, AW, AH } from './const.js';
+import { RAINBOW, clampIsle } from './const.js';
 import { stats } from './stats.js';
 import { drawUnicorn } from './unicorn.js';
 
@@ -49,9 +49,8 @@ export const updatePlayer = (dx, dy, dt, t) => {
   P.vy += (dy * sp - P.vy) * Math.min(1, dt * 12);
   P.x += P.vx * dt;
   P.y += P.vy * dt;
-  // 폭풍 장벽 — 초원 밖으로는 나갈 수 없다
-  P.x = Math.max(-AW + 26, Math.min(AW - 26, P.x));
-  P.y = Math.max(-AH + 30, Math.min(AH - 16, P.y));
+  // 섬 가장자리 — 하늘로 떨어질 수는 없다
+  [P.x, P.y] = clampIsle(P.x, P.y, 28);
   const spd = Math.hypot(P.vx, P.vy);
   P.moving = spd > 30;
   if (Math.abs(P.vx) > 20) P.facing = Math.sign(P.vx);
