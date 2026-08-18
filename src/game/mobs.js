@@ -17,7 +17,7 @@ const BASE = [
   [11, 38, 20],  // SPLIT
   [2, 78, 9],    // MINI
   [26, 33, 30],  // BRUTE
-  [80, 42, 26],  // ELITE
+  [48, 42, 26],  // ELITE — 스펀지가 아니라 '잡을 수 있는 보상 덩어리'
 ];
 /** 해금 시각 (초) */
 const UNLOCK = [0, 45, 90, 999, 25, 40];
@@ -36,14 +36,15 @@ const UNLOCK = [0, 45, 90, 999, 25, 40];
 /** @type {Mob[]} */
 export let mobs = [];
 let spawnAcc = 0;
-let eliteT = 40; // 다음 엘리트까지
+let eliteT = 75; // 다음 엘리트까지 — 빌드가 갖춰진 뒤에 등장
 
-export const resetMobs = () => { mobs = []; spawnAcc = 0; eliteT = 40; };
+export const resetMobs = () => { mobs = []; spawnAcc = 0; eliteT = 75; };
 
 /** @param {number} type @param {number} x @param {number} y @param {number} elapsed */
 const make = (type, x, y, elapsed) => {
   const [hp, sp, r] = BASE[type];
-  const mul = 1 + elapsed * 0.02; // 시간 경과 체력 보정
+  // 시간 경과 체력 보정 — 엘리트는 완만하게 (스펀지화 방지)
+  const mul = 1 + elapsed * (type === ELITE ? 0.012 : 0.02);
   mobs.push({
     type, x, y,
     hp: hp * mul, maxHp: hp * mul,
@@ -99,7 +100,7 @@ export const spawnMobs = (dt, elapsed) => {
   // 엘리트 — 주기 스폰
   eliteT -= dt;
   if (eliteT <= 0) {
-    eliteT = 42;
+    eliteT = 55;
     ringSpawn(ELITE, elapsed);
     ev.elite = true;
   }

@@ -44,7 +44,8 @@ export const drop = (x, y, n, heart = false) => {
     const a = Math.random() * Math.PI * 2;
     shards.push({
       x: x + Math.cos(a) * 10, y: y + Math.sin(a) * 10,
-      hue: Math.random() * 360,
+      // 초록 들판의 보색 계열만 — 핑크/시안/골드 (배경에 묻히지 않는다)
+      hue: [318, 190, 45][(Math.random() * 3) | 0],
       vx: Math.cos(a) * 60, vy: Math.sin(a) * 60,
       heart,
     });
@@ -197,17 +198,27 @@ export const drawLoot = t => {
       ctx.bezierCurveTo(4, -8, 9, -1, 0, 6);
       ctx.fill();
     } else {
-      ctx.rotate(t * 2 + s.x);
-      ctx.fillStyle = `hsl(${s.hue} 90% 68%)`;
+      // 가산 글로우 헤일로 — 어두운 들판 위에서 빛나는 보석
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = `hsl(${s.hue} 95% 70% / ${0.22 + 0.1 * Math.sin(t * 5 + s.x)})`;
       ctx.beginPath();
-      ctx.moveTo(0, -6);
-      ctx.lineTo(4.5, 0);
-      ctx.lineTo(0, 6);
-      ctx.lineTo(-4.5, 0);
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.rotate(t * 2 + s.x);
+      ctx.fillStyle = `hsl(${s.hue} 95% 66%)`;
+      ctx.strokeStyle = 'rgba(25,20,45,.75)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, -6.5);
+      ctx.lineTo(5, 0);
+      ctx.lineTo(0, 6.5);
+      ctx.lineTo(-5, 0);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.85)';
-      ctx.fillRect(-1.2, -2.6, 2.4, 2.4);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,.95)';
+      ctx.fillRect(-1.4, -2.8, 2.8, 2.8);
     }
     ctx.restore();
   }
