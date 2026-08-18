@@ -34,6 +34,7 @@ const ctx = await esbuild.context({
   sourcemap: 'inline',
   outdir: out,
   logLevel: 'warning',
+  define: { TEST_HOOKS: 'true' }, // dev에서는 디버그 훅 활성
 });
 
 await ctx.watch();

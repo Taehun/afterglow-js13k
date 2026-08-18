@@ -1301,8 +1301,9 @@ const drawOver = () => {
   ctx.globalAlpha = 1;
 };
 
-// 테스트 훅 — 테스트 빌드(TEST_HOOKS=true)에만 포함, 제출 빌드에선 DCE로 제거
-if (TEST_HOOKS) {
+// 테스트 훅 — 테스트 빌드(TEST_HOOKS=true)에만 포함, 제출 빌드에선 DCE로 제거.
+// typeof 가드: define이 없는 번들 경로에서도 ReferenceError로 죽지 않게.
+if (typeof TEST_HOOKS !== 'undefined' && TEST_HOOKS) {
   /** @type {any} */ (globalThis).agforce = (/** @type {number} */ kind) => useItem(kind);
   /** @type {any} */ (globalThis).agup = (/** @type {number} */ i) => UPGRADES[i]?.apply();
   /** @type {any} */ (globalThis).agdbg = () => ({
