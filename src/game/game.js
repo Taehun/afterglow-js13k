@@ -153,6 +153,7 @@ const useItem = kind => {
 const pad = () => {
   try { return navigator.getGamepads?.()[0] ?? null; } catch { return null; }
 };
+let uiPress = false; // 이번 포인터 프레스가 UI 버튼에서 시작됨 (조이스틱 무시)
 let gpPrev = { l: false, r: false, a: false, any: false };
 /** 게임패드 버튼 에지 검출 @returns {{l:boolean, r:boolean, a:boolean, any:boolean}} */
 const gpEdge = () => {
@@ -184,7 +185,7 @@ const moveInput = () => {
       if (Math.hypot(ax, ay) > 0.18) { dx = ax; dy = ay; }
     }
   }
-  if (!dx && !dy && ptr.down) {
+  if (!dx && !dy && ptr.down && !uiPress) {
     const jx = ptr.x - ptr.sx, jy = ptr.y - ptr.sy;
     const d = Math.hypot(jx, jy);
     if (d > 10) { dx = jx / Math.max(d, 46); dy = jy / Math.max(d, 46); }
@@ -197,6 +198,12 @@ export const update = dt => {
   updateCam();
   updateMusic();
   if (keysJust.has('KeyM')) toggleMute();
+  // 스피커 버튼 (우측 상단) — 누르면 음소거, 그 프레스는 조이스틱으로 안 잡힌다
+  if (ptr.justDown && Math.hypot(ptr.sx - (W - 34), ptr.sy - 30) < 27) {
+    toggleMute();
+    uiPress = true;
+  }
+  if (!ptr.down) uiPress = false;
   if (shake > 0) shake -= dt;
   if (hurtFlash > 0) hurtFlash -= dt;
   if (bombFlash > 0) bombFlash -= dt;
@@ -975,6 +982,35 @@ const drawHud = () => {
   ctx.fillStyle = '#ffd9e8';
   ctx.fillText(`✦ ${kills}`, W / 2, 56);
   for (let i = 0; i < stats.maxHp; i++) heart2(24 + i * 26, 26, i < P.hp);
+  // 스피커 버튼 (우측 상단)
+  ctx.fillStyle = 'rgba(15,25,18,.45)';
+  ctx.beginPath();
+  ctx.arc(W - 34, 30, 23, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2.6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(W - 42, 26.5);
+  ctx.lineTo(W - 37, 26.5);
+  ctx.lineTo(W - 31.5, 21);
+  ctx.lineTo(W - 31.5, 39);
+  ctx.lineTo(W - 37, 33.5);
+  ctx.lineTo(W - 42, 33.5);
+  ctx.closePath();
+  ctx.fill();
+  if (music.muted) {
+    ctx.beginPath();
+    ctx.moveTo(W - 28, 24);
+    ctx.lineTo(W - 21, 36);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(W - 29.5, 30, 5.5, -0.9, 0.9);
+    ctx.stroke();
+  }
+
   // 초원 치유율 — 꽃 아이콘 + %
   const pct2 = healedPct();
   ctx.textAlign = 'left';
@@ -1141,19 +1177,84 @@ const overBtnHit = (sx, sy) => {
   return -1;
 };
 
-/** 점수 공유 — Web Share API, 실패 시 클립보드 복사 */
+/**
+ * 점수 공유 — 모바일에선 점수 카드 이미지를 생성해 파일로 공유(SNS에 카드로 붙음),
+ * 미지원 환경은 텍스트+링크 → 클립보드 순으로 폴백.
+ */
 const shareScore = () => {
   const mm = String((elapsed / 60) | 0).padStart(2, '0');
   const ss = String((elapsed | 0) % 60).padStart(2, '0');
-  const text = `AFTERGLOW 🌈🦄 I outlasted the storm for ${mm}:${ss} — ${kills} shadows banished, meadow ${healedPct()}% restored. Can you beat me?`;
+  const pct = healedPct();
+  const text = `AFTERGLOW 🌈🦄 I outlasted the storm for ${mm}:${ss} — ${kills} shadows banished, meadow ${pct}% restored. Can you beat me?`;
+  const url = location.href;
+  const fallback = () => {
+    try {
+      if (navigator.share) navigator.share({ text, url }).catch(() => { /* 취소 */ });
+      else if (navigator.clipboard) {
+        navigator.clipboard.writeText(`${text} ${url}`).catch(() => {});
+        shareMsg = 'Copied to clipboard!';
+      }
+    } catch { /* 미지원 */ }
+  };
   try {
-    if (navigator.share) {
-      navigator.share({ text, url: location.href }).catch(() => { /* 사용자가 취소 */ });
-    } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(`${text} ${location.href}`).catch(() => {});
-      shareMsg = 'Copied to clipboard!';
+    // 파일 공유 지원 여부를 동기로 먼저 확인 (제스처 컨텍스트 보존)
+    const probe = new File([''], 'x.png', { type: 'image/png' });
+    if (!navigator.canShare || !navigator.canShare({ files: [probe] })) { fallback(); return; }
+    // ── 점수 카드 렌더 (720×380)
+    const c = document.createElement('canvas');
+    c.width = 720;
+    c.height = 380;
+    const x = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
+    const g = x.createLinearGradient(0, 0, 0, 380);
+    g.addColorStop(0, '#6c7cbd');
+    g.addColorStop(0.6, '#a98fc9');
+    g.addColorStop(1, '#e5b4bb');
+    x.fillStyle = g;
+    x.fillRect(0, 0, 720, 380);
+    for (let b = 0; b < 7; b++) { // 무지개 아치
+      x.strokeStyle = RAINBOW[b];
+      x.lineWidth = 11;
+      x.beginPath();
+      x.arc(360, 470, 330 - b * 11, Math.PI * 1.16, Math.PI * 1.84);
+      x.stroke();
     }
-  } catch { /* 미지원 환경 */ }
+    // 하늘 섬 실루엣
+    x.fillStyle = '#4a3a30';
+    x.beginPath();
+    x.roundRect(200, 312, 320, 58, 28);
+    x.fill();
+    x.fillStyle = '#47584c';
+    x.beginPath();
+    x.roundRect(200, 298, 320, 56, 28);
+    x.fill();
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.lineJoin = 'round';
+    x.font = '900 62px system-ui,sans-serif';
+    x.strokeStyle = 'rgba(30,25,60,.45)';
+    x.lineWidth = 8;
+    x.strokeText('AFTERGLOW', 360, 96);
+    x.fillStyle = '#fff';
+    x.fillText('AFTERGLOW', 360, 96);
+    x.font = '700 36px system-ui,sans-serif';
+    x.fillText(`${mm}:${ss}  ·  ${kills} shadows`, 360, 176);
+    x.fillStyle = '#ffe98c';
+    x.font = '700 30px system-ui,sans-serif';
+    x.fillText(`meadow ${pct}% restored`, 360, 224);
+    x.fillStyle = 'rgba(255,255,255,.9)';
+    x.font = '600 20px system-ui,sans-serif';
+    x.fillText('js13k 2026 — can you outlast the storm?', 360, 264);
+    c.toBlob(blob => {
+      try {
+        if (blob) {
+          const file = new File([blob], 'afterglow.png', { type: 'image/png' });
+          navigator.share({ files: [file], text, url }).catch(() => {});
+          return;
+        }
+      } catch { /* 미지원 */ }
+      fallback();
+    });
+  } catch { fallback(); }
 };
 
 const drawOver = () => {
@@ -1200,14 +1301,16 @@ const drawOver = () => {
   ctx.globalAlpha = 1;
 };
 
-// 테스트 훅 (제출 빌드 전 제거)
-/** @type {any} */ (globalThis).agforce = (/** @type {number} */ kind) => useItem(kind);
-/** @type {any} */ (globalThis).agup = (/** @type {number} */ i) => UPGRADES[i]?.apply();
-/** @type {any} */ (globalThis).agdbg = () => ({
-  state, elapsed: elapsed | 0, kills, hp: P.hp, level: xp.level,
-  mobs: mobs.length, shards: shards.length, trail: trail.length,
-  elites, items: items.length, itemsUsed, blooms: healed.size,
-  // 섬 밖 유실 감시 (항상 0이어야 정상)
-  outShards: shards.filter(s => !insideIsle(s.x, s.y, 20)).length,
-  outMobs: mobs.filter(m => !insideIsle(m.x, m.y, 8)).length,
-});
+// 테스트 훅 — 테스트 빌드(TEST_HOOKS=true)에만 포함, 제출 빌드에선 DCE로 제거
+if (TEST_HOOKS) {
+  /** @type {any} */ (globalThis).agforce = (/** @type {number} */ kind) => useItem(kind);
+  /** @type {any} */ (globalThis).agup = (/** @type {number} */ i) => UPGRADES[i]?.apply();
+  /** @type {any} */ (globalThis).agdbg = () => ({
+    state, elapsed: elapsed | 0, kills, hp: P.hp, level: xp.level,
+    mobs: mobs.length, shards: shards.length, trail: trail.length,
+    elites, items: items.length, itemsUsed, blooms: healed.size,
+    // 섬 밖 유실 감시 (항상 0이어야 정상)
+    outShards: shards.filter(s => !insideIsle(s.x, s.y, 20)).length,
+    outMobs: mobs.filter(m => !insideIsle(m.x, m.y, 8)).length,
+  });
+}

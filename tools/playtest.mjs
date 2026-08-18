@@ -4,13 +4,16 @@
 //
 // 사용: node tools/playtest.mjs [스크린샷출력디렉토리]
 
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 
 const root = path.resolve(import.meta.dirname, '..');
-const distHtml = path.join(root, 'dist/index.html');
+// 테스트 훅이 포함된 전용 빌드를 만들어 검증한다 (제출 빌드에는 훅이 없다)
+execFileSync('node', [path.join(root, 'tools/build.mjs'), '--test', '--quiet'], { stdio: 'inherit' });
+const distHtml = path.join(root, 'dist-test/index.html');
 const shotDir = process.argv[2] || path.join(root, '.playtest');
 fs.mkdirSync(shotDir, { recursive: true });
 

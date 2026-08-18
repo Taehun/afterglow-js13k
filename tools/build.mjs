@@ -26,6 +26,7 @@ const MAX = process.argv.includes('--max');
 const FAST = process.argv.includes('--fast');
 const LOG = process.argv.includes('--log');
 const QUIET = process.argv.includes('--quiet');
+const TEST = process.argv.includes('--test'); // 테스트 훅 포함 빌드 → dist-test/ (zip 없음)
 
 const root = path.resolve(import.meta.dirname, '..');
 const dist = path.join(root, 'dist');
@@ -41,8 +42,22 @@ const bundle = await esbuild.build({
   charset: 'utf8',
   write: false,
   legalComments: 'none',
+  define: { TEST_HOOKS: TEST ? 'true' : 'false' }, // 제출 빌드에선 훅이 DCE로 사라진다
 });
 const rawJs = bundle.outputFiles[0].text;
+
+// 테스트 빌드: dist-test/index.html만 생성 (roadroller/zip 생략 — 봇 검증용)
+if (TEST) {
+  const td = path.join(root, 'dist-test');
+  fs.mkdirSync(td, { recursive: true });
+  fs.writeFileSync(path.join(td, 'index.html'),
+    `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,user-scalable=no">` +
+    `<title>${TITLE}</title>` +
+    `<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100%;height:100%;touch-action:none}</style>` +
+    `<canvas id=c></canvas><script>${rawJs}</script>`);
+  if (!QUIET) console.log('dist-test/index.html (테스트 훅 포함) 생성');
+  process.exit(0);
+}
 
 // ── 2. terser: 3-pass 압축 + 프로퍼티 맹글링 (_프리픽스 컨벤션) ────────────
 const terserOut = await minify(rawJs, {

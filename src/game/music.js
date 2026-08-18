@@ -39,15 +39,19 @@ const init = () => {
     ac = c;
     const m = c.createGain();
     m.gain.value = music.muted ? 0 : 1;
-    m.connect(c.destination);
+    const lp = c.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 4200; // 모서리를 둥글려 꿈결처럼
+    m.connect(lp);
+    lp.connect(c.destination);
     master = m;
     // 피드백 딜레이 — 하프 플럭에 잔향감을 주는 가장 싼 방법
     const delay = c.createDelay(1);
-    delay.delayTime.value = 0.34;
+    delay.delayTime.value = 0.39;
     const fb = c.createGain();
-    fb.gain.value = 0.4;
+    fb.gain.value = 0.47;
     const ds = c.createGain();
-    ds.gain.value = 0.55;
+    ds.gain.value = 0.62;
     ds.connect(delay);
     delay.connect(fb);
     fb.connect(delay);
@@ -59,31 +63,39 @@ const init = () => {
 onFirstInput(init);
 
 /**
- * 하프 플럭 — triangle + 지수 감쇠 엔벨로프.
+ * 판타지 하프 플럭 — 살짝 디튠된 기본음 2개(반짝임) + 2·3배음이 각자 다른
+ * 속도로 사그라드는 4보이스. 어택은 짧게(현을 뜯는 순간), 잔향은 길게.
+ * type이 'sine'이면 단일 보이스(저음/효과음용).
  * @param {number} f 주파수 @param {number} t 시작 시각(ctx 시간)
  * @param {number} [vol] @param {number} [dur] @param {OscillatorType} [type]
  */
 const pluck = (f, t, vol = 0.16, dur = 0.9, type = 'triangle') => {
   if (!ac || !master || !delaySend) return;
-  const o = ac.createOscillator();
-  const g = ac.createGain();
-  o.type = type;
-  o.frequency.value = f;
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(vol, t + 0.012);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g);
-  g.connect(master);
-  g.connect(delaySend);
-  o.start(t);
-  o.stop(t + dur + 0.05);
+  const voices = type === 'triangle'
+    ? [[f, vol, dur, 'triangle'], [f * 1.004, vol * 0.5, dur * 0.9, 'triangle'],
+       [f * 2, vol * 0.28, dur * 0.5, 'sine'], [f * 3.01, vol * 0.09, dur * 0.28, 'sine']]
+    : [[f, vol, dur, type]];
+  for (const [vf, vv, vd, vt] of voices) {
+    const o = ac.createOscillator();
+    const g = ac.createGain();
+    o.type = /** @type {OscillatorType} */ (vt);
+    o.frequency.value = /** @type {number} */ (vf);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(/** @type {number} */ (vv), t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + /** @type {number} */ (vd));
+    o.connect(g);
+    g.connect(master);
+    g.connect(delaySend);
+    o.start(t);
+    o.stop(t + /** @type {number} */ (vd) + 0.05);
+  }
 };
 
 /**
  * 휘슬(틴 휘슬 느낌) — 트라이앵글 + 비브라토 LFO + 딜레이 에코. 아련함의 주역.
  * @param {number} f @param {number} tm @param {number} dur @param {number} [vol]
  */
-const flute = (f, tm, dur, vol = 0.085) => {
+const flute = (f, tm, dur, vol = 0.11) => {
   if (!ac || !master || !delaySend) return;
   const o = ac.createOscillator();
   o.type = 'triangle';
@@ -112,7 +124,7 @@ const flute = (f, tm, dur, vol = 0.085) => {
  * @param {number} tm @param {number} root @param {number} dur */
 const pad = (tm, root, dur) => {
   if (!ac || !master) return;
-  for (const [deg, v] of [[root, 0.05], [root + 4, 0.035]]) {
+  for (const [deg, v] of [[root, 0.05], [root + 4, 0.035], [root + 7, 0.02]]) {
     const o = ac.createOscillator();
     o.type = 'sine';
     o.frequency.value = note(deg);
@@ -129,7 +141,7 @@ const pad = (tm, root, dur) => {
 };
 
 // ── 배경 시퀀서 — 잔물결 하프 (마디 = 8스텝) ──────────────────────────────
-const STEP = 0.22;
+const STEP = 0.245;
 let nextStep = 0;
 let stepIdx = 0;
 // 코드 진행 (스케일 도수 루트, 마디당 1개): D → A → Bm → G
@@ -162,17 +174,17 @@ export const updateMusic = () => {
     if (s === 0 && music.intensity >= 0.35) {
       pluck(note(root), nextStep, 0.11, 2, 'sine');
     }
-    // 하프 잔물결 — 매 스텝, 첫 박 액센트 (이 곡의 주역)
+    // 하프 잔물결 — 매 스텝, 첫 박 액센트, 하프답게 길게 링잉 (이 곡의 주역)
     const tone = root + 7 + ARP[s];
-    pluck(note(tone), nextStep, (s === 0 ? 0.085 : 0.055) + music.intensity * 0.02, 1.4);
+    pluck(note(tone), nextStep, (s === 0 ? 0.08 : 0.05) + music.intensity * 0.02, 2.2);
     // 에코 하프 (intensity ≥ .55) — 한 스텝 뒤 한 옥타브 위에서 되울린다
     if (music.intensity >= 0.55) {
-      pluck(note(tone + 7), nextStep + STEP * 0.5, 0.03, 1.1);
+      pluck(note(tone + 7), nextStep + STEP * 0.5, 0.028, 1.6);
     }
     // 휘슬 에어 (intensity ≥ .12) — 8마디 롱톤 선율, 쉼표는 쉼표대로
     if (music.intensity >= 0.12) {
       const mel = MEL_AT[stepIdx % 64];
-      if (mel && mel[0] >= 0) flute(note(mel[0]), nextStep, mel[1] * STEP * 0.94, 0.06 + music.intensity * 0.03);
+      if (mel && mel[0] >= 0) flute(note(mel[0]), nextStep, mel[1] * STEP * 0.94, 0.095 + music.intensity * 0.035);
     }
     stepIdx++;
     nextStep += STEP;
