@@ -13,6 +13,9 @@ export const start = (update, draw) => {
   let acc = 0;
   /** @param {number} now */
   const frame = now => {
+    // rAF를 먼저 예약 — 한 프레임에서 예외가 나도 루프는 죽지 않는다
+    // (콘솔 에러 0은 별개로 지켜야 하는 규칙이지만, 루프 사망은 최악의 실패 모드)
+    requestAnimationFrame(frame);
     // 탭 전환 복귀 시 거대한 dt 스파이크 방지 (최대 0.1초만 따라잡기)
     acc += Math.min((now - last) / 1000, 0.1);
     last = now;
@@ -21,7 +24,6 @@ export const start = (update, draw) => {
       acc -= STEP;
     }
     draw();
-    requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 };

@@ -25,8 +25,11 @@ export const music = {
 const PENTA = [0, 2, 4, 7, 9];
 /** @param {number} semi */
 const freq = semi => 261.63 * 2 ** (semi / 12);
-/** 스케일 인덱스 → 주파수 (옥타브 자동) @param {number} i */
-const note = i => freq(PENTA[((i % 5) + 5) % 5] + 12 * Math.floor(i / 5));
+/** 스케일 인덱스 → 주파수 (옥타브 자동, 비정수 입력 방어) @param {number} i */
+const note = i => {
+  i = Math.floor(i);
+  return freq(PENTA[((i % 5) + 5) % 5] + 12 * Math.floor(i / 5));
+};
 
 const init = () => {
   try {
