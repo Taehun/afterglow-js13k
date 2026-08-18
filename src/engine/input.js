@@ -14,8 +14,9 @@ export const keys = new Set();
 /** 이번 update 틱에 새로 눌린 키 @type {Set<string>} */
 export const keysJust = new Set();
 
-/** 포인터 상태 (마우스/터치 공용) */
-export const ptr = { x: 0, y: 0, down: false, justDown: false };
+/** 포인터 상태 (마우스/터치 공용). sx/sy는 이번 프레스의 시작 좌표 —
+ *  빠른 플릭에서도 정확하도록 pointerdown 이벤트 시점에 캡처된다. */
+export const ptr = { x: 0, y: 0, sx: 0, sy: 0, down: false, justDown: false };
 
 /** 추적 중인 포인터 id (-1 = 없음) */
 let activeId = -1;
@@ -47,6 +48,8 @@ canvas.addEventListener('pointerdown', e => {
   if (activeId < 0) { // 첫 포인터만 추적 — 두 번째 손가락은 무시
     activeId = e.pointerId;
     pos(e);
+    ptr.sx = e.clientX;
+    ptr.sy = e.clientY;
     ptr.down = true;
     ptr.justDown = true;
     canvas.setPointerCapture(e.pointerId); // 캔버스 밖으로 드래그해도 추적 유지

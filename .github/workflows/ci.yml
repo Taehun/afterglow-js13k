@@ -32,6 +32,17 @@ jobs:
       - name: Smoke test (no console errors, Chrome + Firefox)
         run: npm run smoke
 
+      - name: E2E playtest (clear all levels)
+        run: npm run playtest
+
+      - name: Upload playtest screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playtest-screenshots
+          path: .playtest/
+          if-no-files-found: ignore
+
       - name: Size summary
         if: always()
         run: |

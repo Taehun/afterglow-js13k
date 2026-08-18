@@ -1,8 +1,9 @@
 # jk13k-2026 — js13kGames 2026 출품작
 
 js13kGames 2026 (15회차) 참가 프로젝트. 테마: **"Unicorns and Rainbows"**.
-게임 이름/컨셉은 미정 — 확정되면 이 파일 상단과 `tools/build.mjs`의 `TITLE`,
-`src/engine/save.js`의 `NS`를 함께 갱신한다.
+게임: **ARCLIGHT** — 드래그로 무지개 아치를 그려 발판·경사로·우산으로 쓰며
+유니콘 망아지들을 비프뢰스트 게이트로 보내는 퍼즐 (컨셉 근거: docs/IDEAS.md,
+본선 백로그: docs/research/proto-*.md).
 
 모든 규칙은 2026-08-18에 공식 페이지(https://js13kgames.com/2026/rules)에서
 직접 확인한 원문 기준이다.
@@ -19,7 +20,8 @@ js13kGames 2026 (15회차) 참가 프로젝트. 테마: **"Unicorns and Rainbows
 3. **최신 Chrome + Firefox 두 브라우저에서 플레이 가능, 콘솔 에러 0.**
    콘솔 에러는 규칙상 필수 조건이다. `npm run smoke`가 자동 검증한다.
 4. **same-origin 공유** — js13kgames.com에서 모든 출품작이 origin을 공유한다.
-   - localStorage 접근은 반드시 `src/engine/save.js`를 통해서만 (네임스페이스 `th13k26:` 강제).
+   - localStorage 접근은 반드시 `src/engine/save.js`를 통해서만 (네임스페이스 `arclight26:` 강제 —
+     변경하면 기존 플레이어 세이브가 전부 고아가 되므로 대회 기간 중 절대 바꾸지 않는다).
    - `localStorage.clear()` 절대 금지 — 다른 참가자의 세이브를 전부 날린다.
    - sessionStorage/IndexedDB/Cache Storage를 쓰게 되면 같은 네임스페이스 원칙 적용.
 5. **동일 게임을 플랫폼별 별도 제출물로 중복 제출 금지** (예: 데스크톱 빌드와
@@ -36,9 +38,8 @@ js13kGames 2026 (15회차) 참가 프로젝트. 테마: **"Unicorns and Rainbows
 8. **테마는 심사 배점 기준(rating criterion)이며 점수에 영향을 준다** — 원문 명시.
    해석은 자유지만 무시하면 손해. 신선한 아이디어는 공식적으로 환영받는다
    ("기술적으로 거칠어도 신선한 아이디어 환영" — New content only 섹션 원문).
-   (참고: 과거 회차 심사는 Theme/Innovation/Gameplay/Graphics/Audio/Controls
-   6개 항목 채점이었으나 **2026 원문에서는 미확인** — 배점 구조에 기대는 결정을
-   하기 전에 투표 페이지에서 재확인할 것.)
+   채점 항목은 **Overall + Theme/Innovation/Gameplay/Graphics/Audio/Controls**
+   (2026-08-18, js13kgames.com/2026/games 페이지의 SORT BY 옵션에서 확인).
 
 ## 일정 (KST 기준)
 
@@ -68,6 +69,7 @@ js13kGames 2026 (15회차) 참가 프로젝트. 테마: **"Unicorns and Rainbows
 | `npm run build -- --fast` | Roadroller 생략한 빠른 사이즈 근사치 |
 | `npm run build -- --log` | 결과를 `size-history.csv`에 기록 (회귀 추적) |
 | `npm run smoke` | 빌드 산출물을 실제 브라우저로 검증 (콘솔 에러 0, 애니메이션 구동) |
+| `npm run playtest` | E2E 자동 플레이 — 3레벨 전부 실제로 클리어 + 단계별 스크린샷(.playtest/) |
 | `npm run typecheck` | JSDoc 기반 tsc strict 체크 |
 | `npm run check` | typecheck + build + smoke 전부 |
 

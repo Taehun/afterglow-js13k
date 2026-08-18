@@ -13,6 +13,7 @@
     "build:max": "node tools/build.mjs --max",
     "size": "node tools/build.mjs --quiet",
     "smoke": "node tools/smoke.mjs",
+    "playtest": "node tools/playtest.mjs",
     "typecheck": "tsc -p jsconfig.json",
     "check": "npm run typecheck && npm run build && npm run smoke"
   },

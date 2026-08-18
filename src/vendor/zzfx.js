@@ -30,4 +30,8 @@ const initAudio = () => {
   zzfxX.state == 'suspended' && zzfxX.resume();
 };
 
-export { zzfx, zzfxV, initAudio };
+// 음악 엔진 등이 같은 컨텍스트를 공유하기 위한 접근자.
+// 반드시 사용자 제스처 이후(initAudio 이후)에 호출할 것.
+const getAudioCtx = () => (zzfxX ||= new AudioContext());
+
+export { zzfx, zzfxV, initAudio, getAudioCtx };
