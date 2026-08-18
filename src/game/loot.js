@@ -1,6 +1,7 @@
 // 드랍과 성장 — 무지개 조각(XP), 하트, 흡입, 레벨 곡선.
 
 import { ctx } from '../engine/view.js';
+import { clampIsle } from './const.js';
 import { P } from './player.js';
 import { starPath } from './fx.js';
 import { stats } from './stats.js';
@@ -24,6 +25,7 @@ const ITEM_LIFE = 13;
 export const dropItem = (x, y, t) => {
   // 가중 추첨: 폭탄·자석이 흔하고 질주·별·하트는 귀하다
   const pool = [MAGNET, MAGNET, BOMB, BOMB, BOMB, DASH, STARS, HEART];
+  [x, y] = clampIsle(x, y, 40); // 섬 가장자리 안쪽에만 떨어진다
   items.push({ x, y, kind: pool[(Math.random() * pool.length) | 0], t0: t });
 };
 
@@ -73,6 +75,8 @@ export const updateLoot = (dt, t) => {
   for (const s of shards) {
     s.x += s.vx * dt;
     s.y += s.vy * dt;
+    // 조각이 섬 밖으로 굴러떨어지지 않게 — 항상 주울 수 있는 위치에 머문다
+    [s.x, s.y] = clampIsle(s.x, s.y, 24);
     s.vx *= 1 - Math.min(1, dt * 4);
     s.vy *= 1 - Math.min(1, dt * 4);
     const d = Math.hypot(P.x - s.x, P.y - s.y - 14);

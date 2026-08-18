@@ -122,6 +122,8 @@ export const updateMobs = (dt, t) => {
     }
     m.x += ((P.x - m.x) / d) * sp * dt + m.kx * dt;
     m.y += ((P.y - m.y) / d) * sp * dt + m.ky * dt;
+    // 넉백·폭발로도 섬 밖으로 밀려나지 않는다 (밖에서 죽으면 조각을 못 줍는다)
+    [m.x, m.y] = clampIsle(m.x, m.y, 12);
     m.kx *= 1 - Math.min(1, dt * 8);
     m.ky *= 1 - Math.min(1, dt * 8);
     if (m.flash > 0) m.flash -= dt;

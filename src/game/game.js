@@ -1207,4 +1207,7 @@ const drawOver = () => {
   state, elapsed: elapsed | 0, kills, hp: P.hp, level: xp.level,
   mobs: mobs.length, shards: shards.length, trail: trail.length,
   elites, items: items.length, itemsUsed, blooms: healed.size,
+  // 섬 밖 유실 감시 (항상 0이어야 정상)
+  outShards: shards.filter(s => !insideIsle(s.x, s.y, 20)).length,
+  outMobs: mobs.filter(m => !insideIsle(m.x, m.y, 8)).length,
 });

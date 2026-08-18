@@ -90,6 +90,7 @@ try {
   console.log('70s 후:', JSON.stringify(d1));
   check(d1.kills >= 10, `잔광/별 처치 (kills=${d1.kills})`);
   check(picks >= 1, `레벨업 3택 (선택 ${picks}회)`);
+  check(d1.outShards === 0 && d1.outMobs === 0, `섬 밖 유실 없음 (조각 ${d1.outShards}, 몹 ${d1.outMobs})`);
   check(d1.elapsed >= 60 || d1.state === 'over', `서지 구간 도달 (elapsed=${d1.elapsed})`);
   check(d1.blooms >= 10, `초원 치유 (blooms=${d1.blooms})`);
 
