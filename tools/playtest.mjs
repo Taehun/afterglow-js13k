@@ -1,5 +1,6 @@
-// E2E 플레이테스트 — SUNSHOWER 5레벨을 설계 정답 수순으로 전부 클리어한다.
-// 레벨 설계가 실제로 풀리는지(솔버 검증)와 콘솔 에러 0을 함께 보장한다.
+// E2E 플레이테스트 — AFTERGLOW를 실제 브라우저에서 봇 플레이한다.
+// 검증: 이동/잔광 처치, 레벨업 3택, 서지 웨이브, 운빨 아이템 5종 발동,
+// 접촉 피해→게임오버, 재시작, 콘솔 에러 0.
 //
 // 사용: node tools/playtest.mjs [스크린샷출력디렉토리]
 
@@ -32,17 +33,6 @@ const exe = findExe([
 ]);
 if (!exe) { console.error('Chromium 실행 파일 없음'); process.exit(1); }
 
-// 설계 정답 수순 (levels.js와 동기 유지)
-const SOLUTIONS = [
-  'RRRRDRRU',
-  'RRRRRRDRRU',
-  'RRRDD',
-  'DDDRRR',
-  'RRRRRURDDDRR',
-];
-/** @type {Record<string, string>} */
-const KEY = { R: 'ArrowRight', L: 'ArrowLeft', U: 'ArrowUp', D: 'ArrowDown' };
-
 const browser = await chromium.launch({ executablePath: exe, headless: true });
 const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
 /** @type {string[]} */
@@ -51,8 +41,8 @@ page.on('console', m => { if (m.type() === 'error') errors.push(`console.error: 
 page.on('pageerror', e => errors.push(`uncaught: ${e}`));
 
 await page.goto('file://' + distHtml);
-await page.waitForFunction('typeof sundbg == "function"', undefined, { timeout: 5000 });
-const dbg = () => page.evaluate('sundbg()');
+await page.waitForFunction('typeof agdbg == "function"', undefined, { timeout: 5000 });
+const dbg = () => page.evaluate('agdbg()');
 /** @param {string} name */
 const shot = name => page.screenshot({ path: path.join(shotDir, name + '.png') });
 
@@ -64,40 +54,55 @@ const check = (cond, msg) => {
 };
 
 try {
-  await page.waitForTimeout(600);
-  await shot('1-level1-start');
-
-  for (let i = 0; i < SOLUTIONS.length; i++) {
-    const d0 = await dbg();
-    check(d0.level === i && d0.state === 'play', `레벨 ${i + 1} 시작`);
-    for (const mv of SOLUTIONS[i]) {
-      await page.keyboard.press(KEY[mv]);
-      await page.waitForTimeout(190);
-    }
-    if (i === 0) await shot('2-level1-rainbow');
-    await page.waitForFunction(`sundbg().state == "win" || sundbg().state == "end"`, undefined, { timeout: 4000 });
-    check(true, `레벨 ${i + 1} 클리어 (${SOLUTIONS[i].length}수)`);
-    if (i === 2) await shot('3-level3-win');
-    await page.waitForTimeout(1000);
-    await page.mouse.click(480, 480); // 카드 진행 (카드 밖 탭)
-    await page.waitForTimeout(400);
+  // 1) 아이템 5종 강제 발동 — 각 효과가 에러 없이 도는지
+  await page.waitForTimeout(500);
+  for (let k = 0; k < 5; k++) {
+    await page.evaluate(`agforce(${k})`);
+    await page.waitForTimeout(350);
   }
+  const d0 = await dbg();
+  check(d0.itemsUsed === 5, `운빨 아이템 5종 발동 (${d0.itemsUsed}/5)`);
 
-  const dEnd = await dbg();
-  await shot('4-end');
-  check(dEnd.state === 'end', '전체 클리어 (엔딩 화면)');
+  // 2) 원형 카이팅 70초 — 처치/레벨업/서지, pick 카드는 1번 선택
+  const seq = ['KeyD', 'KeyS', 'KeyA', 'KeyW'];
+  let picks = 0, shotEarly = false, shotPick = false;
+  const t0 = Date.now();
+  let i = 0;
+  while (Date.now() - t0 < 70000) {
+    const d = await dbg();
+    if (d.state === 'pick') {
+      if (!shotPick) { await shot('3-pick'); shotPick = true; }
+      await page.keyboard.press('Digit1');
+      picks++;
+      await page.waitForTimeout(200);
+      continue;
+    }
+    if (d.state === 'over') break;
+    const k = seq[i++ % 4];
+    await page.keyboard.down(k);
+    await page.waitForTimeout(360);
+    if (!shotEarly && Date.now() - t0 > 4000) { await shot('1-early'); shotEarly = true; }
+    await page.keyboard.up(k);
+  }
+  await shot('2-swarm');
+  const d1 = await dbg();
+  console.log('70s 후:', JSON.stringify(d1));
+  check(d1.kills >= 10, `잔광/별 처치 (kills=${d1.kills})`);
+  check(picks >= 1, `레벨업 3택 (선택 ${picks}회)`);
+  check(d1.elapsed >= 60 || d1.state === 'over', `서지 구간 도달 (elapsed=${d1.elapsed})`);
+  check(d1.blooms >= 10, `초원 치유 (blooms=${d1.blooms})`);
 
-  // Undo·재시작 동작 확인 (엔딩에서 재시작 → 한 수 → Z 언두)
-  await page.mouse.click(480, 480);
+  // 3) 정지 → 게임오버 → 재시작
+  if (d1.state !== 'over') {
+    await page.waitForFunction('agdbg().state=="over"', undefined, { timeout: 40000 }).catch(() => {});
+  }
+  const d2 = await dbg();
+  await shot('4-over');
+  check(d2.state === 'over', `게임오버 (state=${d2.state})`);
+  await page.keyboard.press('KeyR');
   await page.waitForTimeout(400);
-  await page.keyboard.press('ArrowRight');
-  await page.waitForTimeout(250);
-  const m1 = (await dbg()).ux;
-  await page.keyboard.press('KeyZ');
-  await page.waitForTimeout(250);
-  const m2 = (await dbg()).ux;
-  check(m1 === 2 && m2 === 1, 'Undo(Z) 동작');
-  await shot('5-restart');
+  const d3 = await dbg();
+  check(d3.state === 'play' && d3.kills === 0, '재시작 초기화');
 } catch (e) {
   ok = false;
   console.error('✖ 진행 실패:', /** @type {Error} */ (e).message);

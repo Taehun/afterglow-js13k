@@ -1,6 +1,6 @@
-// AFTERGLOW — 무지개 잔광이 곧 무기인 유니콘 뱀서라이크 (스파이크).
-// 달려야 화력이 나온다: 카이팅이 곧 조준. 먹구름 무리 / 히트스톱·셰이크 /
-// 조각 수집 → 레벨업 3택 성장.
+// AFTERGLOW — 무지개 잔광이 곧 무기인 유니콘 뱀서라이크.
+// 스토리: 폭풍이 세상의 색을 삼켰다. 달려라, 마지막 유니콘.
+// 이 파일은 오케스트레이터: 입력/전투 글루/씬 렌더(y-정렬 유사 3D)/HUD/공유.
 
 import { ctx, W, H } from '../engine/view.js';
 import { ptr, keys, keysJust } from '../engine/input.js';
@@ -13,31 +13,37 @@ import {
   updateMusic, music, toggleMute, glissNote, rescueChord, winFanfare, eraseNote,
 } from './music.js';
 import { stats, resetStats, rollUpgrades } from './stats.js';
-import { P, trail, resetPlayer, updatePlayer, onTrail, drawTrail, drawPlayer } from './player.js';
-import { mobs, resetMobs, spawnMobs, updateMobs, hurt, drawMobs } from './mobs.js';
-import { shards, xp, resetLoot, drop, updateLoot, drawLoot } from './loot.js';
-
+import { P, trail, boost, resetPlayer, updatePlayer, drawTrail, drawPlayer, onTrail } from './player.js';
+import { mobs, resetMobs, spawnMobs, updateMobs, hurt, drawMob, ELITE, BRUTE } from './mobs.js';
+import {
+  shards, items, xp, vacuum, resetLoot, drop, dropItem, updateLoot,
+  drawLoot, drawItems, MAGNET, BOMB, DASH, STARS, HEART,
+} from './loot.js';
 let t = 0;
 /** @type {'play' | 'pick' | 'over'} */
 let state = 'play';
 let elapsed = 0;
 let kills = 0;
+let elites = 0;
+let itemsUsed = 0;
 let best = /** @type {number} */ (load('best', 0));
-let freeze = 0;   // 히트스톱
+let freeze = 0;
 let shake = 0;
+let bombFlash = 0;
+let hurtFlash = 0;
 let started = false;
+let toastT = 0;
+let toastMsg = '';
+let shareMsg = '';
 /** @type {import('./stats.js').Upgrade[]} */
 let offers = [];
-/** @type {{x:number, y:number, v:number, t0:number}[]} 데미지 숫자 */
+/** @type {{x:number, y:number, v:number, t0:number}[]} */
 let dnums = [];
-/** @type {{x:number, y:number, tx:number, ty:number, hue:number} & {m: import('./mobs.js').Mob | null} []} */
 /** @type {{x:number, y:number, m: import('./mobs.js').Mob, hue:number}[]} */
 let bolts = [];
 let starT = 0;
 let trailTickT = 0;
-let hurtFlash = 0;
-/** 색을 되찾은 초원 셀들 — 스토리를 메카닉으로: 잔광이 지나간 자리에 색이 돌아온다
- * @type {Set<string>} */
+/** 색을 되찾은 초원 셀들 @type {Set<string>} */
 let healed = new Set();
 
 const reset = () => {
@@ -52,33 +58,82 @@ const reset = () => {
   t = 0;
   elapsed = 0;
   kills = 0;
+  elites = 0;
+  itemsUsed = 0;
   freeze = 0;
   shake = 0;
+  bombFlash = 0;
+  toastT = 0;
+  shareMsg = '';
   state = 'play';
 };
 
-/** 데미지 숫자 팝 @param {number} x @param {number} y @param {number} v */
+/** @param {string} msg */
+const toast = msg => { toastMsg = msg; toastT = 2.4; };
+
+/** @param {number} x @param {number} y @param {number} v */
 const dnum = (x, y, v) => {
   dnums.push({ x: x + (Math.random() - 0.5) * 14, y, v: Math.round(v), t0: t });
   if (dnums.length > 40) dnums.shift();
 };
 
-/** 초원 셀 키 @param {number} x @param {number} y */
-const cellKey = (x, y) => `${Math.floor(x / 96)},${Math.floor(y / 96)}`;
-/** @param {number} x @param {number} y */
-const heal = (x, y) => { if (healed.size < 2400) healed.add(cellKey(x, y)); };
+const cellKey = (/** @type {number} */ x, /** @type {number} */ y) => `${Math.floor(x / 96)},${Math.floor(y / 96)}`;
+const heal = (/** @type {number} */ x, /** @type {number} */ y) => { if (healed.size < 2400) healed.add(cellKey(x, y)); };
 
-/** 처치 공통 처리 @param {import('./mobs.js').Mob} m */
+/** @param {import('./mobs.js').Mob} m */
 const onKill = m => {
   kills++;
-  freeze = Math.min(0.08, freeze + (m.big ? 0.05 : 0.028)); // 히트스톱
-  shake = Math.min(0.4, shake + (m.big ? 0.22 : 0.08));
-  drop(m.x, m.y, m.big ? 5 : 1, m.big && Math.random() < 0.35);
-  heal(m.x, m.y); // 어둠이 스러진 자리에도 색이 돌아온다
+  freeze = Math.min(0.08, freeze + (m.type >= BRUTE ? 0.05 : 0.028));
+  shake = Math.min(0.4, shake + (m.type >= BRUTE ? 0.22 : 0.08));
+  drop(m.x, m.y, m.type >= BRUTE ? 5 : 1, false);
+  heal(m.x, m.y);
+  if (m.type === ELITE) {
+    elites++;
+    dropItem(m.x, m.y, t);
+    winFanfare();
+    sparkle(m.x, m.y, 24, 200);
+  } else if (m.type === BRUTE && Math.random() < 0.12) {
+    dropItem(m.x, m.y, t);
+  }
   if (kills % 5 === 0) glissNote(((kills / 5) | 0) % 5 + 3);
 };
 
-/** 이동 입력 (-1..1 벡터) — 키보드 8방향 + 플로팅 조이스틱 */
+/** 운빨 아이템 발동 @param {number} kind */
+const useItem = kind => {
+  itemsUsed++;
+  if (kind === MAGNET) {
+    vacuum.t = 1.7;
+    glissNote(11);
+    ring(P.x, P.y - 14);
+  } else if (kind === BOMB) {
+    bombFlash = 0.3;
+    freeze = 0.07;
+    shake = 0.7;
+    S.pop();
+    ring(P.x, P.y - 14);
+    for (const m of [...mobs]) {
+      const d = Math.hypot(m.x - P.x, m.y - P.y);
+      if (d < 460) {
+        dnum(m.x, m.y - m.r, 34);
+        if (hurt(m, 34, ((m.x - P.x) / (d || 1)) * 400, ((m.y - P.y) / (d || 1)) * 400, elapsed)) onKill(m);
+      }
+    }
+  } else if (kind === DASH) {
+    boost.t = 3;
+    rescueChord();
+    toast('RAINBOW RUSH!');
+  } else if (kind === STARS) {
+    for (let i = 0; i < 14 && mobs.length; i++) {
+      const m = mobs[(Math.random() * mobs.length) | 0];
+      bolts.push({ x: P.x, y: P.y - 30, m, hue: Math.random() * 360 });
+    }
+    glissNote(12);
+  } else if (kind === HEART) {
+    P.hp = Math.min(stats.maxHp, P.hp + 1);
+    rescueChord();
+  }
+};
+
 const moveInput = () => {
   let dx = 0, dy = 0;
   if (keys.has('ArrowLeft') || keys.has('KeyA')) dx -= 1;
@@ -100,16 +155,23 @@ export const update = dt => {
   if (keysJust.has('KeyM')) toggleMute();
   if (shake > 0) shake -= dt;
   if (hurtFlash > 0) hurtFlash -= dt;
+  if (bombFlash > 0) bombFlash -= dt;
+  if (toastT > 0) toastT -= dt;
 
   if (state === 'over') {
     updateFx(dt);
     t += dt;
-    if (ptr.justDown || keysJust.has('KeyR') || keysJust.has('Space')) reset();
+    if (keysJust.has('KeyR') || keysJust.has('Space')) reset();
+    else if (ptr.justDown) {
+      const b = overBtnHit(ptr.sx, ptr.sy);
+      if (b === 1) reset();
+      else if (b === 0) shareScore();
+    }
     return;
   }
 
   if (state === 'pick') {
-    t += dt * 0.08; // 선택 중엔 세계가 거의 멈춘다 (연출만 미세 진행)
+    t += dt * 0.08;
     let sel = -1;
     if (keysJust.has('Digit1')) sel = 0;
     if (keysJust.has('Digit2')) sel = 1;
@@ -129,7 +191,7 @@ export const update = dt => {
   }
 
   // ── play ──
-  if (freeze > 0) { freeze -= dt; return; } // 히트스톱: 세계 정지
+  if (freeze > 0) { freeze -= dt; return; }
   t += dt;
   elapsed += dt;
   music.intensity = Math.min(1, elapsed / 90);
@@ -137,34 +199,35 @@ export const update = dt => {
   const [dx, dy] = moveInput();
   if (dx || dy) started = true;
   updatePlayer(dx, dy, dt, t);
-  heal(P.x, P.y); // 유니콘이 달린 자리는 색을 되찾는다
+  heal(P.x, P.y);
 
-  spawnMobs(dt, elapsed);
-  updateMobs(dt);
+  const ev = spawnMobs(dt, elapsed);
+  if (ev.surge) { toast('The storm surges!'); shake = Math.min(0.5, shake + 0.2); eraseNote(); }
+  if (ev.elite) toast('A crowned shadow emerges…');
+  updateMobs(dt, t);
 
-  // 잔광 데미지 틱
+  // 잔광 데미지 틱 (질주 중엔 2배)
   trailTickT -= dt;
   if (trailTickT <= 0) {
     trailTickT = 0.14;
+    const dmg = stats.trailDmg * (boost.t > 0 ? 2 : 1);
     for (const m of [...mobs]) {
       if (m.tick <= 0 && onTrail(m.x, m.y)) {
         m.tick = 0.24;
-        dnum(m.x, m.y - m.r, stats.trailDmg);
-        if (hurt(m, stats.trailDmg, 0, 0)) onKill(m);
+        dnum(m.x, m.y - m.r, dmg);
+        if (hurt(m, dmg, 0, 0, elapsed)) onKill(m);
       }
     }
   }
 
-  // 별 화살 — 가장 가까운 적 N기 조준
+  // 별 화살
   starT -= dt;
   if (starT <= 0 && mobs.length) {
     starT = 1.05;
     const near = [...mobs]
       .sort((a, b) => Math.hypot(a.x - P.x, a.y - P.y) - Math.hypot(b.x - P.x, b.y - P.y))
       .slice(0, stats.stars);
-    for (const m of near) {
-      bolts.push({ x: P.x, y: P.y - 30, m, hue: Math.random() * 360 });
-    }
+    for (const m of near) bolts.push({ x: P.x, y: P.y - 30, m, hue: Math.random() * 360 });
     glissNote(7);
   }
   bolts = bolts.filter(b => {
@@ -176,42 +239,45 @@ export const update = dt => {
     if (d < b.m.r + 6) {
       dnum(b.m.x, b.m.y - b.m.r, stats.starDmg);
       const kb = 130;
-      if (hurt(b.m, stats.starDmg, ((b.m.x - P.x) / d) * kb, ((b.m.y - P.y) / d) * kb)) onKill(b.m);
+      if (hurt(b.m, stats.starDmg, ((b.m.x - P.x) / d) * kb, ((b.m.y - P.y) / d) * kb, elapsed)) onKill(b.m);
       else shake = Math.min(0.3, shake + 0.03);
       return false;
     }
     return true;
   });
 
-  // 접촉 피해
-  if (P.inv <= 0) {
-    for (const m of mobs) {
-      if (Math.hypot(m.x - P.x, m.y - (P.y - 14)) < m.r + 13) {
-        P.hp--;
-        P.inv = 1.3;
-        shake = 0.55;
-        hurtFlash = 0.3;
-        freeze = 0.06;
-        S.pop();
-        eraseNote();
-        // 주변 적 밀쳐내기 (숨돌릴 틈)
-        for (const o of mobs) {
-          const d = Math.hypot(o.x - P.x, o.y - P.y) || 1;
-          if (d < 140) { o.kx += ((o.x - P.x) / d) * 500; o.ky += ((o.y - P.y) / d) * 500; }
-        }
-        if (P.hp <= 0) {
-          state = 'over';
-          best = Math.max(best, kills);
-          save('best', best);
-        }
-        break;
+  // 접촉 — 질주 중엔 오히려 몸통 박치기가 무기
+  for (const m of [...mobs]) {
+    if (Math.hypot(m.x - P.x, m.y - (P.y - 14)) < m.r + 13) {
+      if (boost.t > 0) {
+        dnum(m.x, m.y - m.r, 22);
+        if (hurt(m, 22, ((m.x - P.x) / 40) * 300, ((m.y - P.y) / 40) * 300, elapsed)) onKill(m);
+        continue;
       }
+      if (P.inv > 0) continue;
+      P.hp--;
+      P.inv = 1.3;
+      shake = 0.55;
+      hurtFlash = 0.3;
+      freeze = 0.06;
+      S.pop();
+      eraseNote();
+      for (const o of mobs) {
+        const d2 = Math.hypot(o.x - P.x, o.y - P.y) || 1;
+        if (d2 < 140) { o.kx += ((o.x - P.x) / d2) * 500; o.ky += ((o.y - P.y) / d2) * 500; }
+      }
+      if (P.hp <= 0) {
+        state = 'over';
+        best = Math.max(best, kills);
+        save('best', best);
+      }
+      break;
     }
   }
 
-  const got = updateLoot(dt);
+  const got = updateLoot(dt, t);
   if (got.picked) glissNote((xp.cur % 5) + 9);
-  if (got.healed) rescueChord();
+  for (const k of got.gotItems) useItem(k);
   if (got.leveled) {
     state = 'pick';
     offers = rollUpgrades();
@@ -225,17 +291,27 @@ export const update = dt => {
 
 // ── 렌더 ───────────────────────────────────────────────────────────────────
 
+/** 유사난수 @param {number} a @param {number} b */
+const rnd = (a, b) => Math.abs(Math.sin(a * 12.9898 + b * 78.233) * 43758.5453) % 1;
+
 export const draw = () => {
   updateCam();
   beginWorld();
-  // 카메라: 유니콘 중심
   ctx.translate(VW / 2 - P.x, VH / 2 - P.y);
   drawMeadow();
   drawTrail(t);
   drawLoot(t);
-  drawMobs(t);
-  drawPlayer(t);
-  // 별 화살
+  drawItems(t);
+
+  // ── y-정렬 렌더 — 높이 있는 소품과 개체가 앞뒤로 겹치며 입체감을 만든다
+  /** @type {{y:number, f:() => void}[]} */
+  const scene = [];
+  collectProps(scene);
+  for (const m of mobs) scene.push({ y: m.y + m.r, f: () => drawMob(m, t) });
+  scene.push({ y: P.y + 1, f: () => drawPlayer(t) });
+  scene.sort((a, b) => a.y - b.y);
+  for (const s of scene) s.f();
+
   for (const b of bolts) {
     ctx.fillStyle = `hsl(${b.hue} 95% 75%)`;
     ctx.save();
@@ -252,14 +328,13 @@ export const draw = () => {
     ctx.restore();
   }
   drawFx();
-  // 데미지 숫자
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const d of dnums) {
     const age = (t - d.t0) / 0.7;
     ctx.globalAlpha = 1 - age;
     ctx.font = '800 15px system-ui, sans-serif';
-    ctx.strokeStyle = 'rgba(40,25,70,.6)';
+    ctx.strokeStyle = 'rgba(20,14,40,.6)';
     ctx.lineWidth = 3;
     ctx.lineJoin = 'round';
     ctx.strokeText(String(d.v), d.x, d.y - age * 24);
@@ -269,14 +344,18 @@ export const draw = () => {
   ctx.globalAlpha = 1;
   endWorld();
 
-  // 비네트 — 가장자리를 어둠이 조인다 (폭풍의 압박감 + 시선 집중)
+  // 폭탄 섬광
+  if (bombFlash > 0) {
+    ctx.fillStyle = `rgba(255,245,220,${bombFlash * 1.6})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  // 비네트
   const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.72);
-  vg.addColorStop(0, 'rgba(15,8,35,0)');
-  vg.addColorStop(1, 'rgba(15,8,35,.4)');
+  vg.addColorStop(0, 'rgba(12,18,12,0)');
+  vg.addColorStop(1, 'rgba(10,16,10,.42)');
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
 
-  // 스크린 셰이크는 스크린 레이어에서 (HUD 이전)
   if (shake > 0) {
     ctx.save();
     ctx.translate((Math.random() - 0.5) * shake * 20, (Math.random() - 0.5) * shake * 20);
@@ -284,7 +363,6 @@ export const draw = () => {
   drawHud();
   if (shake > 0) ctx.restore();
 
-  // 피격 붉은 비네트
   if (hurtFlash > 0) {
     ctx.fillStyle = `rgba(255,80,110,${hurtFlash * 0.5})`;
     ctx.fillRect(0, 0, W, H);
@@ -295,35 +373,57 @@ export const draw = () => {
 };
 
 /**
- * 색을 빼앗긴 들판 — 폭풍이 삼킨 황혼의 초원.
- * 유니콘이 지나가(healed) 색을 되찾은 셀만 꽃이 다시 핀다:
- * 플레이할수록 지나온 길이 색으로 물드는 것이 화면에 남는다.
+ * 황혼의 초원 — 폭풍에 색이 바랬지만 여전히 '초원'으로 읽히는 세이지 그린.
+ * 구릉 음영·구름 그림자·소품(y-정렬)이 평면을 입체로 보이게 한다.
+ * healed 셀은 색을 되찾는다: 풀이 살아나고 꽃이 핀다.
  */
 const drawMeadow = () => {
   const ox = overdrawX(), oy = overdrawY();
   const x0 = P.x - VW / 2 - ox, y0 = P.y - VH / 2 - oy;
   const w = VW + ox * 2, h = VH + oy * 2;
-  ctx.fillStyle = '#413b5c';
+  ctx.fillStyle = '#47584c';
   ctx.fillRect(x0, y0, w, h);
-  // 큰 체커 띠 — 이동 체감
-  const C = 128;
-  for (let gx = Math.floor(x0 / C); gx <= (x0 + w) / C; gx++) {
-    for (let gy = Math.floor(y0 / C); gy <= (y0 + h) / C; gy++) {
-      if ((gx + gy) % 2) continue;
-      ctx.fillStyle = 'rgba(255,255,255,.016)';
-      ctx.fillRect(gx * C, gy * C, C, C);
+
+  // 구릉 음영 — 완만한 언덕의 명암 (정적 해시 배치)
+  for (let gx = Math.floor(x0 / 384); gx <= (x0 + w) / 384; gx++) {
+    for (let gy = Math.floor(y0 / 384); gy <= (y0 + h) / 384; gy++) {
+      const r = rnd(gx * 3, gy * 5);
+      if (r < 0.45) continue;
+      const hx = gx * 384 + r * 300, hy = gy * 384 + rnd(gy, gx) * 300;
+      const light = r > 0.72;
+      const hg = ctx.createRadialGradient(hx, hy, 20, hx, hy, 210);
+      hg.addColorStop(0, light ? 'rgba(180,220,170,.07)' : 'rgba(10,25,12,.13)');
+      hg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = hg;
+      ctx.beginPath();
+      ctx.ellipse(hx, hy, 210, 150, r * 3, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
-  // 결정적 꽃·풀 — healed 셀은 색과 반짝임을 되찾는다
+
+  // healed 패치 — 되살아난 잔디가 은은하게 밝다 (라디얼 페이드로 경계 없이)
+  for (const k of healed) {
+    const [cx, cy] = k.split(',').map(Number);
+    const px2 = cx * 96 + 48, py2 = cy * 96 + 48;
+    if (px2 < x0 - 70 || px2 > x0 + w + 70 || py2 < y0 - 70 || py2 > y0 + h + 70) continue;
+    const pg = ctx.createRadialGradient(px2, py2, 8, px2, py2, 68);
+    pg.addColorStop(0, 'rgba(140,210,130,.11)');
+    pg.addColorStop(1, 'rgba(140,210,130,0)');
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.arc(px2, py2, 68, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 꽃·풀 디테일
   const G = 96;
   for (let gx = Math.floor(x0 / G); gx <= (x0 + w) / G; gx++) {
     for (let gy = Math.floor(y0 / G); gy <= (y0 + h) / G; gy++) {
-      const r = Math.abs(Math.sin(gx * 12.9898 + gy * 78.233) * 43758.5453) % 1;
+      const r = rnd(gx, gy);
       const fx2 = gx * G + r * G, fy2 = gy * G + ((r * 7919) % 1) * G;
       const alive = healed.has(`${gx},${gy}`);
       if (r < 0.3) {
         if (alive) {
-          // 되살아난 꽃 — 파스텔 + 살짝 커짐
           ctx.fillStyle = ['#ff9fb6', '#ffd76e', '#c9a6ff', '#8fe0ff'][(gx + gy * 3) % 4];
           for (let p = 0; p < 5; p++) {
             const a = (p * Math.PI * 2) / 5 + r * 6;
@@ -338,14 +438,13 @@ const drawMeadow = () => {
           ctx.fillStyle = `rgba(255,255,255,${0.4 + 0.4 * Math.sin(t * 3 + gx * 2 + gy)})`;
           ctx.fillRect(fx2 + 5, fy2 - 6, 1.8, 1.8);
         } else {
-          // 시든 꽃 — 회색으로 고개 숙임
-          ctx.strokeStyle = 'rgba(120,112,150,.7)';
+          ctx.strokeStyle = 'rgba(112,128,108,.8)';
           ctx.lineWidth = 1.6;
           ctx.beginPath();
           ctx.moveTo(fx2, fy2 + 6);
           ctx.quadraticCurveTo(fx2 + 1, fy2 - 1, fx2 + 4.5, fy2 + 0.5);
           ctx.stroke();
-          ctx.fillStyle = '#787092';
+          ctx.fillStyle = '#77876f';
           for (let p = 0; p < 4; p++) {
             const a = (p * Math.PI * 2) / 4 + 0.4;
             ctx.beginPath();
@@ -354,7 +453,7 @@ const drawMeadow = () => {
           }
         }
       } else if (r < 0.62) {
-        ctx.strokeStyle = alive ? 'rgba(140,220,160,.6)' : 'rgba(90,84,120,.6)';
+        ctx.strokeStyle = alive ? 'rgba(150,225,140,.7)' : 'rgba(96,114,92,.7)';
         ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(fx2, fy2 + 5);
@@ -365,59 +464,200 @@ const drawMeadow = () => {
       }
     }
   }
-  // 낮게 깔린 안개 — 가산 블렌딩으로 확실하게 '밝은 김'으로만 보이게
-  ctx.globalCompositeOperation = 'lighter';
-  for (let gx = Math.floor(x0 / 512); gx <= (x0 + w) / 512; gx++) {
-    for (let gy = Math.floor(y0 / 512); gy <= (y0 + h) / 512; gy++) {
-      const r = Math.abs(Math.sin(gx * 31.7 + gy * 17.3)) % 1;
-      if (r < 0.55) continue;
-      const mx = gx * 512 + r * 400 + Math.sin(t * 0.4 + gx + gy) * 30;
-      const my = gy * 512 + ((r * 977) % 1) * 400;
-      const mg = ctx.createRadialGradient(mx, my, 10, mx, my, 150);
-      mg.addColorStop(0, 'rgba(130,115,180,.07)');
-      mg.addColorStop(1, 'rgba(130,115,180,0)');
-      ctx.fillStyle = mg;
+
+  // 구름 그림자 — 들판 위를 느리게 흐른다 (강력한 입체 단서)
+  for (let gx = Math.floor(x0 / 760); gx <= (x0 + w) / 760; gx++) {
+    for (let gy = Math.floor(y0 / 760); gy <= (y0 + h) / 760; gy++) {
+      const r = rnd(gx * 7, gy * 11);
+      if (r < 0.5) continue;
+      const sx2 = gx * 760 + r * 500 + Math.sin(t * 0.11 + r * 9) * 160;
+      const sy2 = gy * 760 + rnd(gy, gx * 2) * 500 + Math.cos(t * 0.09 + r * 5) * 90;
+      ctx.fillStyle = 'rgba(8,14,10,.1)';
+      for (const [bx2, by2, br] of [[-70, 0, 90], [30, -25, 75], [80, 15, 65]]) {
+        ctx.beginPath();
+        ctx.ellipse(sx2 + bx2, sy2 + by2, br, br * 0.62, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // 저 멀리 번개
+  const lp = t % 6.7;
+  if (lp < 0.14) {
+    ctx.fillStyle = `rgba(220,230,255,${lp < 0.05 ? 0.07 : 0.03})`;
+    ctx.fillRect(x0, y0, w, h);
+  }
+};
+
+/**
+ * 높이 있는 소품 수집 — 나무/덤불/바위/억새. healed 셀에선 소생한다.
+ * @param {{y:number, f:() => void}[]} scene
+ */
+const collectProps = scene => {
+  const ox = overdrawX(), oy = overdrawY();
+  const x0 = P.x - VW / 2 - ox, y0 = P.y - VH / 2 - oy;
+  const w = VW + ox * 2, h = VH + oy * 2;
+  const G = 224;
+  for (let gx = Math.floor(x0 / G); gx <= (x0 + w) / G; gx++) {
+    for (let gy = Math.floor((y0 - 90) / G); gy <= (y0 + h) / G; gy++) {
+      const r = rnd(gx * 13, gy * 17);
+      if (r > 0.3) continue;
+      const px2 = gx * G + rnd(gx, gy * 3) * (G - 60) + 30;
+      const py2 = gy * G + rnd(gy * 3, gx) * (G - 60) + 30;
+      const alive = healed.has(cellKey(px2, py2));
+      if (r < 0.05) scene.push({ y: py2, f: () => tree(px2, py2, alive, r) });
+      else if (r < 0.11) scene.push({ y: py2, f: () => bush(px2, py2, alive, r) });
+      else if (r < 0.16) scene.push({ y: py2, f: () => rock(px2, py2, r) });
+      else scene.push({ y: py2, f: () => reeds(px2, py2, alive, r) });
+    }
+  }
+};
+
+/** @param {number} x @param {number} y @param {boolean} alive @param {number} sd */
+const tree = (x, y, alive, sd) => {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = 'rgba(8,14,10,.25)';
+  ctx.beginPath();
+  ctx.ellipse(0, 3, 26, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 줄기
+  ctx.strokeStyle = alive ? '#6b5240' : '#565650';
+  ctx.lineWidth = 9;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(2, -28, sd * 8 - 3, -46);
+  ctx.stroke();
+  if (alive) {
+    // 소생한 수관 + 꽃
+    for (const [cx2, cy2, cr, col] of [
+      [-14, -52, 17, '#5e9a6a'], [10, -60, 20, '#6fae7d'], [-2, -44, 15, '#548c60'], [16, -46, 13, '#6fae7d'],
+    ]) {
+      ctx.fillStyle = /** @type {string} */ (col);
       ctx.beginPath();
-      ctx.ellipse(mx, my, 150, 50, 0, 0, Math.PI * 2);
+      ctx.arc(/** @type {number} */(cx2), /** @type {number} */(cy2), /** @type {number} */(cr), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#ffb6cd';
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.arc(-16 + rnd(i, sd * 99) * 36, -66 + rnd(sd * 99, i) * 24, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // 앙상한 가지
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(1, -30);
+    ctx.lineTo(-14, -48);
+    ctx.moveTo(2, -38);
+    ctx.lineTo(16, -54);
+    ctx.moveTo(sd * 8 - 3, -46);
+    ctx.lineTo(sd * 8 - 9, -62);
+    ctx.stroke();
+  }
+  ctx.restore();
+};
+
+/** @param {number} x @param {number} y @param {boolean} alive @param {number} sd */
+const bush = (x, y, alive, sd) => {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = 'rgba(8,14,10,.2)';
+  ctx.beginPath();
+  ctx.ellipse(0, 2, 16, 4.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  for (const [cx2, cy2, cr] of [[-8, -7, 9], [6, -9, 10], [0, -4, 9]]) {
+    ctx.fillStyle = alive ? '#5e9a6a' : '#5c6b58';
+    ctx.beginPath();
+    ctx.arc(cx2, cy2, cr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (alive) {
+    ctx.fillStyle = '#ffd76e';
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(-8 + rnd(i, sd * 77) * 18, -12 + rnd(sd * 77, i) * 8, 1.8, 0, Math.PI * 2);
       ctx.fill();
     }
   }
-  ctx.globalCompositeOperation = 'source-over';
-  // 저 멀리 번개 — 폭풍이 아직 세상을 쥐고 있다
-  const lp = t % 6.7;
-  if (lp < 0.14) {
-    ctx.fillStyle = `rgba(210,190,255,${lp < 0.05 ? 0.09 : 0.04})`;
-    ctx.fillRect(x0, y0, w, h);
+  ctx.restore();
+};
+
+/** @param {number} x @param {number} y @param {number} sd */
+const rock = (x, y, sd) => {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = 'rgba(8,14,10,.2)';
+  ctx.beginPath();
+  ctx.ellipse(0, 2, 15, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#707a80';
+  ctx.beginPath();
+  ctx.moveTo(-13, 0);
+  ctx.lineTo(-8, -12 - sd * 10);
+  ctx.lineTo(3, -15 - sd * 8);
+  ctx.lineTo(12, -6);
+  ctx.lineTo(13, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.14)';
+  ctx.beginPath();
+  ctx.moveTo(-8, -12 - sd * 10);
+  ctx.lineTo(3, -15 - sd * 8);
+  ctx.lineTo(1, -7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+};
+
+/** @param {number} x @param {number} y @param {boolean} alive @param {number} sd */
+const reeds = (x, y, alive, sd) => {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = alive ? 'rgba(150,225,140,.85)' : 'rgba(104,122,100,.85)';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 4; i++) {
+    const a = -0.5 + i * 0.32 + sd;
+    ctx.beginPath();
+    ctx.moveTo(i * 3 - 5, 2);
+    ctx.quadraticCurveTo(i * 3 - 5 + a * 6, -8, i * 3 - 5 + a * 12, -16 - (i % 2) * 5);
+    ctx.stroke();
   }
+  if (alive) {
+    ctx.fillStyle = '#ff9fb6';
+    ctx.beginPath();
+    ctx.arc(2, -18, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 };
 
 // ── HUD / 오버레이 ─────────────────────────────────────────────────────────
 
 const drawHud = () => {
   ctx.textBaseline = 'middle';
-  // 생존 시간 (상단 중앙)
   const mm = String((elapsed / 60) | 0).padStart(2, '0');
   const ss = String((elapsed | 0) % 60).padStart(2, '0');
   ctx.textAlign = 'center';
   ctx.font = `800 ${Math.max(18, H * 0.05)}px system-ui, sans-serif`;
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = 'rgba(40,25,70,.5)';
+  ctx.strokeStyle = 'rgba(15,25,18,.55)';
   ctx.lineWidth = 5;
   ctx.strokeText(`${mm}:${ss}`, W / 2, 30);
   ctx.fillStyle = '#fff';
   ctx.fillText(`${mm}:${ss}`, W / 2, 30);
-  // 킬 수
   ctx.font = 'bold 14px system-ui, sans-serif';
-  ctx.strokeStyle = 'rgba(40,25,70,.5)';
+  ctx.strokeStyle = 'rgba(15,25,18,.55)';
   ctx.lineWidth = 3;
-  ctx.strokeText(`☁ ${kills}`, W / 2, 56);
+  ctx.strokeText(`✦ ${kills}`, W / 2, 56);
   ctx.fillStyle = '#ffd9e8';
-  ctx.fillText(`☁ ${kills}`, W / 2, 56);
-  // 하트
-  for (let i = 0; i < stats.maxHp; i++) heart(24 + i * 26, 26, i < P.hp);
-  // XP 바 (하단 전폭) + 레벨
+  ctx.fillText(`✦ ${kills}`, W / 2, 56);
+  for (let i = 0; i < stats.maxHp; i++) heart2(24 + i * 26, 26, i < P.hp);
   const bh = 12;
-  ctx.fillStyle = 'rgba(40,25,70,.4)';
+  ctx.fillStyle = 'rgba(15,25,18,.5)';
   ctx.fillRect(0, H - bh, W, bh);
   const frac = xp.cur / xp.need;
   if (frac > 0) {
@@ -430,10 +670,22 @@ const drawHud = () => {
   ctx.font = 'bold 12px system-ui, sans-serif';
   ctx.fillStyle = '#fff';
   ctx.fillText(`LV ${xp.level}`, W - 10, H - bh - 10);
+  // 토스트 (서지/엘리트/질주)
+  if (toastT > 0) {
+    ctx.globalAlpha = Math.min(1, toastT);
+    ctx.textAlign = 'center';
+    ctx.font = `800 ${Math.max(15, H * 0.036)}px system-ui, sans-serif`;
+    ctx.strokeStyle = 'rgba(15,25,18,.7)';
+    ctx.lineWidth = 4;
+    ctx.strokeText(toastMsg, W / 2, H * 0.2);
+    ctx.fillStyle = '#ffe98c';
+    ctx.fillText(toastMsg, W / 2, H * 0.2);
+    ctx.globalAlpha = 1;
+  }
 };
 
 /** @param {number} x @param {number} y @param {boolean} lit */
-const heart = (x, y, lit) => {
+const heart2 = (x, y, lit) => {
   ctx.fillStyle = lit ? '#ff6b81' : 'rgba(255,255,255,.2)';
   ctx.beginPath();
   ctx.moveTo(x, y + 7);
@@ -442,7 +694,6 @@ const heart = (x, y, lit) => {
   ctx.fill();
 };
 
-/** 업그레이드 카드 배치 계산 @returns {{x:number, y:number, w:number, h:number}[]} */
 const cardRects = () => {
   const cw = Math.min(200 * cam.s, W * 0.28);
   const ch = cw * 1.25;
@@ -466,7 +717,7 @@ const cardHit = (sx, sy) => {
 };
 
 const drawPick = () => {
-  ctx.fillStyle = 'rgba(40,25,70,.45)';
+  ctx.fillStyle = 'rgba(12,20,14,.5)';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -476,10 +727,9 @@ const drawPick = () => {
   const rects = cardRects();
   offers.forEach((u, i) => {
     const r = rects[i];
-    const hov = Math.sin(t * 40 + i) * 2;
     ctx.save();
-    ctx.translate(r.x + r.w / 2, r.y + r.h / 2 + hov);
-    ctx.shadowColor = 'rgba(20,10,40,.4)';
+    ctx.translate(r.x + r.w / 2, r.y + r.h / 2 + Math.sin(t * 40 + i) * 2);
+    ctx.shadowColor = 'rgba(5,12,8,.5)';
     ctx.shadowBlur = 16;
     ctx.fillStyle = 'rgba(255,255,255,.95)';
     ctx.beginPath();
@@ -494,13 +744,13 @@ const drawPick = () => {
     ctx.fillStyle = RAINBOW[(i * 2 + 1) % 7];
     ctx.font = `800 ${r.h * 0.3}px system-ui, sans-serif`;
     ctx.fillText(u.icon, 0, -r.h * 0.18);
-    ctx.fillStyle = '#5d4a91';
+    ctx.fillStyle = '#3c5044';
     ctx.font = `800 ${r.h * 0.085}px system-ui, sans-serif`;
     ctx.fillText(u.name, 0, r.h * 0.12);
-    ctx.fillStyle = '#8a76b8';
+    ctx.fillStyle = '#6d8577';
     ctx.font = `500 ${r.h * 0.07}px system-ui, sans-serif`;
     ctx.fillText(u.desc, 0, r.h * 0.26);
-    ctx.fillStyle = 'rgba(138,118,184,.6)';
+    ctx.fillStyle = 'rgba(109,133,119,.6)';
     ctx.font = `700 ${r.h * 0.07}px system-ui, sans-serif`;
     ctx.fillText(String(i + 1), 0, r.h * 0.4);
     ctx.restore();
@@ -510,7 +760,7 @@ const drawPick = () => {
 const drawHint = () => {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#e8ddff';
+  ctx.fillStyle = '#e6f0e2';
   ctx.font = `600 ${Math.max(13, H * 0.03)}px system-ui, sans-serif`;
   ctx.globalAlpha = 0.9;
   ctx.fillText('The storm drank the colors of the world.', W / 2, H * 0.68);
@@ -519,37 +769,95 @@ const drawHint = () => {
   ctx.font = `700 ${Math.max(14, H * 0.032)}px system-ui, sans-serif`;
   ctx.fillText('Gallop, last unicorn — your afterglow burns them back', W / 2, H * 0.68 + H * 0.055);
   ctx.globalAlpha = 0.8;
-  ctx.fillStyle = '#b9a8ff';
+  ctx.fillStyle = '#bcd9c2';
   ctx.font = `500 ${Math.max(12, H * 0.025)}px system-ui, sans-serif`;
   ctx.fillText('WASD / drag to move', W / 2, H * 0.68 + H * 0.105);
   ctx.globalAlpha = 1;
 };
 
+/** 게임오버 버튼 배치 @returns {{x:number, y:number, w:number, h:number}[]} */
+const overBtns = () => {
+  const bw = Math.min(190 * cam.s, W * 0.36), bh = 52 * cam.s;
+  return [0, 1].map(i => ({
+    x: W / 2 - bw - 12 + i * (bw + 24),
+    y: H * 0.66,
+    w: bw, h: bh,
+  }));
+};
+
+/** @param {number} sx @param {number} sy */
+const overBtnHit = (sx, sy) => {
+  const btns = overBtns();
+  for (let i = 0; i < 2; i++) {
+    const b = btns[i];
+    if (sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h) return i;
+  }
+  return -1;
+};
+
+/** 점수 공유 — Web Share API, 실패 시 클립보드 복사 */
+const shareScore = () => {
+  const mm = String((elapsed / 60) | 0).padStart(2, '0');
+  const ss = String((elapsed | 0) % 60).padStart(2, '0');
+  const text = `AFTERGLOW 🌈🦄 I outlasted the storm for ${mm}:${ss} — ${kills} shadows banished, ${healed.size} blooms restored. Can you beat me?`;
+  try {
+    if (navigator.share) {
+      navigator.share({ text, url: location.href }).catch(() => { /* 사용자가 취소 */ });
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(`${text} ${location.href}`).catch(() => {});
+      shareMsg = 'Copied to clipboard!';
+    }
+  } catch { /* 미지원 환경 */ }
+};
+
 const drawOver = () => {
-  ctx.fillStyle = 'rgba(15,8,35,.62)';
+  ctx.fillStyle = 'rgba(10,18,12,.66)';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#ffd9e8';
-  ctx.font = `800 ${Math.max(24, H * 0.065)}px system-ui, sans-serif`;
-  ctx.fillText('The gloom won… this time', W / 2, H * 0.3);
+  ctx.font = `800 ${Math.max(24, H * 0.062)}px system-ui, sans-serif`;
+  ctx.fillText('The gloom won… this time', W / 2, H * 0.26);
   ctx.fillStyle = '#fff';
   ctx.font = `800 ${Math.max(20, H * 0.05)}px system-ui, sans-serif`;
   const mm = String((elapsed / 60) | 0).padStart(2, '0');
   const ss = String((elapsed | 0) % 60).padStart(2, '0');
-  ctx.fillText(`${mm}:${ss} · ${kills} shadows · ${healed.size} blooms`, W / 2, H * 0.42);
-  ctx.fillStyle = '#b9a8ff';
+  ctx.fillText(`${mm}:${ss} · ${kills} shadows · ${healed.size} blooms`, W / 2, H * 0.38);
+  ctx.fillStyle = '#bcd9c2';
   ctx.font = `600 ${Math.max(13, H * 0.03)}px system-ui, sans-serif`;
-  ctx.fillText(kills >= best && kills > 0 ? 'NEW BEST!' : `best ${best}`, W / 2, H * 0.5);
-  ctx.globalAlpha = 0.65 + 0.35 * Math.sin(t * 3);
-  ctx.fillStyle = '#e8ddff';
-  ctx.font = `700 ${Math.max(14, H * 0.032)}px system-ui, sans-serif`;
-  ctx.fillText('tap or R to gallop again', W / 2, H * 0.64);
+  ctx.fillText(kills >= best && kills > 0 ? 'NEW BEST!' : `best ${best}`, W / 2, H * 0.46);
+  // 버튼: SHARE / AGAIN
+  const btns = overBtns();
+  const labels = ['SHARE', 'AGAIN'];
+  const cols = ['#8fd4ff', '#ffd76e'];
+  btns.forEach((b, i) => {
+    ctx.fillStyle = 'rgba(255,255,255,.94)';
+    ctx.beginPath();
+    ctx.roundRect(b.x, b.y, b.w, b.h, 14 * cam.s);
+    ctx.fill();
+    ctx.strokeStyle = cols[i];
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = '#3c5044';
+    ctx.font = `800 ${b.h * 0.42}px system-ui, sans-serif`;
+    ctx.fillText(labels[i], b.x + b.w / 2, b.y + b.h / 2 + 1);
+  });
+  if (shareMsg) {
+    ctx.fillStyle = '#8fd4ff';
+    ctx.font = `600 ${Math.max(12, H * 0.026)}px system-ui, sans-serif`;
+    ctx.fillText(shareMsg, W / 2, H * 0.66 + 70 * cam.s + 14);
+  }
+  ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 3);
+  ctx.fillStyle = '#e6f0e2';
+  ctx.font = `600 ${Math.max(12, H * 0.026)}px system-ui, sans-serif`;
+  ctx.fillText('R = quick restart', W / 2, H * 0.87);
   ctx.globalAlpha = 1;
 };
 
 // 테스트 훅 (제출 빌드 전 제거)
+/** @type {any} */ (globalThis).agforce = (/** @type {number} */ kind) => useItem(kind);
 /** @type {any} */ (globalThis).agdbg = () => ({
   state, elapsed: elapsed | 0, kills, hp: P.hp, level: xp.level,
   mobs: mobs.length, shards: shards.length, trail: trail.length,
+  elites, items: items.length, itemsUsed, blooms: healed.size,
 });

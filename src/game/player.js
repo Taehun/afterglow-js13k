@@ -18,6 +18,9 @@ export const P = {
 
 const BASE_SPEED = 165;
 
+/** 무지개 질주 — 남은 시간 동안 2배속 + 무적 + 접촉 공격 */
+export const boost = { t: 0 };
+
 /** @type {number[][]} 잔광 포인트 [x, y, t] */
 export let trail = [];
 
@@ -39,7 +42,8 @@ export const resetPlayer = () => {
 export const updatePlayer = (dx, dy, dt, t) => {
   const len = Math.hypot(dx, dy);
   if (len > 0.01) { dx /= len; dy /= len; }
-  const sp = BASE_SPEED * stats.speed;
+  if (boost.t > 0) boost.t -= dt;
+  const sp = BASE_SPEED * stats.speed * (boost.t > 0 ? 2 : 1);
   // 살짝 미끄러지는 가감속 — 활주 손맛
   P.vx += (dx * sp - P.vx) * Math.min(1, dt * 12);
   P.vy += (dy * sp - P.vy) * Math.min(1, dt * 12);
@@ -120,9 +124,21 @@ const band = (off, t, am) => {
 
 /** @param {number} t */
 export const drawPlayer = t => {
-  if (P.inv > 0 && ((t * 16) | 0) % 2) return; // 피격 점멸
+  if (P.inv > 0 && boost.t <= 0 && ((t * 16) | 0) % 2) return; // 피격 점멸
   ctx.save();
   ctx.translate(P.x, P.y);
+  // 무지개 질주 — 몸 전체가 빛난다
+  if (boost.t > 0) {
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(0, -20, 6, 0, -20, 46);
+    g.addColorStop(0, `hsl(${(t * 300) % 360} 90% 75% / .4)`);
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, -20, 46, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  }
   ctx.scale(P.facing * 0.9, 0.9);
   drawUnicorn(t, { walk: P.moving ? P.gallop : 0 });
   ctx.restore();

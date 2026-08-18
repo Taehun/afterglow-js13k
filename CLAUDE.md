@@ -1,9 +1,12 @@
 # jk13k-2026 — js13kGames 2026 출품작
 
 js13kGames 2026 (15회차) 참가 프로젝트. 테마: **"Unicorns and Rainbows"**.
-게임: **ARCLIGHT** — 드래그로 무지개 아치를 그려 발판·경사로·우산으로 쓰며
-유니콘 망아지들을 비프뢰스트 게이트로 보내는 퍼즐 (컨셉 근거: docs/IDEAS.md,
-본선 백로그: docs/research/proto-*.md).
+게임: **AFTERGLOW** — 무지개 잔광이 곧 무기인 유니콘 뱀서라이크.
+스토리: "폭풍이 세상의 색을 삼켰다. 달려라, 마지막 유니콘 — 너의 잔광이
+색을 되태운다." 달린 자리의 잔광이 그림자 무리를 태우고(정지 = 화력 0),
+지나간 들판은 색을 되찾는다(blooms). 아케이드/퍼즐 대안 탐색 이력과 근거는
+docs/IDEAS.md·docs/research/, 폐기된 프로토는 arclight/looplight/sunshower
+브랜치에 보존.
 
 모든 규칙은 2026-08-18에 공식 페이지(https://js13kgames.com/2026/rules)에서
 직접 확인한 원문 기준이다.
