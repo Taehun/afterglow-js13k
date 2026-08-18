@@ -36,6 +36,9 @@ let bolts = [];
 let starT = 0;
 let trailTickT = 0;
 let hurtFlash = 0;
+/** 색을 되찾은 초원 셀들 — 스토리를 메카닉으로: 잔광이 지나간 자리에 색이 돌아온다
+ * @type {Set<string>} */
+let healed = new Set();
 
 const reset = () => {
   resetStats();
@@ -45,6 +48,7 @@ const reset = () => {
   clearFx();
   bolts = [];
   dnums = [];
+  healed = new Set();
   t = 0;
   elapsed = 0;
   kills = 0;
@@ -59,12 +63,18 @@ const dnum = (x, y, v) => {
   if (dnums.length > 40) dnums.shift();
 };
 
+/** 초원 셀 키 @param {number} x @param {number} y */
+const cellKey = (x, y) => `${Math.floor(x / 96)},${Math.floor(y / 96)}`;
+/** @param {number} x @param {number} y */
+const heal = (x, y) => { if (healed.size < 2400) healed.add(cellKey(x, y)); };
+
 /** 처치 공통 처리 @param {import('./mobs.js').Mob} m */
 const onKill = m => {
   kills++;
   freeze = Math.min(0.08, freeze + (m.big ? 0.05 : 0.028)); // 히트스톱
   shake = Math.min(0.4, shake + (m.big ? 0.22 : 0.08));
   drop(m.x, m.y, m.big ? 5 : 1, m.big && Math.random() < 0.35);
+  heal(m.x, m.y); // 어둠이 스러진 자리에도 색이 돌아온다
   if (kills % 5 === 0) glissNote(((kills / 5) | 0) % 5 + 3);
 };
 
@@ -127,6 +137,7 @@ export const update = dt => {
   const [dx, dy] = moveInput();
   if (dx || dy) started = true;
   updatePlayer(dx, dy, dt, t);
+  heal(P.x, P.y); // 유니콘이 달린 자리는 색을 되찾는다
 
   spawnMobs(dt, elapsed);
   updateMobs(dt);
@@ -258,6 +269,13 @@ export const draw = () => {
   ctx.globalAlpha = 1;
   endWorld();
 
+  // 비네트 — 가장자리를 어둠이 조인다 (폭풍의 압박감 + 시선 집중)
+  const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.72);
+  vg.addColorStop(0, 'rgba(15,8,35,0)');
+  vg.addColorStop(1, 'rgba(15,8,35,.4)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
+
   // 스크린 셰이크는 스크린 레이어에서 (HUD 이전)
   if (shake > 0) {
     ctx.save();
@@ -276,51 +294,100 @@ export const draw = () => {
   else if (!started) drawHint();
 };
 
-/** 초원 — 월드 해시 기반 무한 타일 (꽃·풀·색띠) */
+/**
+ * 색을 빼앗긴 들판 — 폭풍이 삼킨 황혼의 초원.
+ * 유니콘이 지나가(healed) 색을 되찾은 셀만 꽃이 다시 핀다:
+ * 플레이할수록 지나온 길이 색으로 물드는 것이 화면에 남는다.
+ */
 const drawMeadow = () => {
   const ox = overdrawX(), oy = overdrawY();
   const x0 = P.x - VW / 2 - ox, y0 = P.y - VH / 2 - oy;
   const w = VW + ox * 2, h = VH + oy * 2;
-  ctx.fillStyle = '#9fe0ae';
+  ctx.fillStyle = '#413b5c';
   ctx.fillRect(x0, y0, w, h);
   // 큰 체커 띠 — 이동 체감
   const C = 128;
   for (let gx = Math.floor(x0 / C); gx <= (x0 + w) / C; gx++) {
     for (let gy = Math.floor(y0 / C); gy <= (y0 + h) / C; gy++) {
       if ((gx + gy) % 2) continue;
-      ctx.fillStyle = 'rgba(255,255,255,.05)';
+      ctx.fillStyle = 'rgba(255,255,255,.016)';
       ctx.fillRect(gx * C, gy * C, C, C);
     }
   }
-  // 결정적 꽃·풀
+  // 결정적 꽃·풀 — healed 셀은 색과 반짝임을 되찾는다
   const G = 96;
   for (let gx = Math.floor(x0 / G); gx <= (x0 + w) / G; gx++) {
     for (let gy = Math.floor(y0 / G); gy <= (y0 + h) / G; gy++) {
       const r = Math.abs(Math.sin(gx * 12.9898 + gy * 78.233) * 43758.5453) % 1;
       const fx2 = gx * G + r * G, fy2 = gy * G + ((r * 7919) % 1) * G;
-      if (r < 0.28) {
-        ctx.fillStyle = ['#ff9fb6', '#ffd76e', '#c9a6ff', '#fff'][(gx + gy * 3) % 4];
-        for (let p = 0; p < 5; p++) {
-          const a = (p * Math.PI * 2) / 5;
+      const alive = healed.has(`${gx},${gy}`);
+      if (r < 0.3) {
+        if (alive) {
+          // 되살아난 꽃 — 파스텔 + 살짝 커짐
+          ctx.fillStyle = ['#ff9fb6', '#ffd76e', '#c9a6ff', '#8fe0ff'][(gx + gy * 3) % 4];
+          for (let p = 0; p < 5; p++) {
+            const a = (p * Math.PI * 2) / 5 + r * 6;
+            ctx.beginPath();
+            ctx.arc(fx2 + Math.cos(a) * 3.4, fy2 + Math.sin(a) * 3.4, 2.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.fillStyle = '#fff';
           ctx.beginPath();
-          ctx.arc(fx2 + Math.cos(a) * 3, fy2 + Math.sin(a) * 3, 2, 0, Math.PI * 2);
+          ctx.arc(fx2, fy2, 1.7, 0, Math.PI * 2);
           ctx.fill();
+          ctx.fillStyle = `rgba(255,255,255,${0.4 + 0.4 * Math.sin(t * 3 + gx * 2 + gy)})`;
+          ctx.fillRect(fx2 + 5, fy2 - 6, 1.8, 1.8);
+        } else {
+          // 시든 꽃 — 회색으로 고개 숙임
+          ctx.strokeStyle = 'rgba(120,112,150,.7)';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(fx2, fy2 + 6);
+          ctx.quadraticCurveTo(fx2 + 1, fy2 - 1, fx2 + 4.5, fy2 + 0.5);
+          ctx.stroke();
+          ctx.fillStyle = '#787092';
+          for (let p = 0; p < 4; p++) {
+            const a = (p * Math.PI * 2) / 4 + 0.4;
+            ctx.beginPath();
+            ctx.arc(fx2 + 4.5 + Math.cos(a) * 2.4, fy2 + 0.5 + Math.sin(a) * 2.4, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(fx2, fy2, 1.6, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (r < 0.6) {
-        ctx.strokeStyle = 'rgba(110,190,130,.55)';
+      } else if (r < 0.62) {
+        ctx.strokeStyle = alive ? 'rgba(140,220,160,.6)' : 'rgba(90,84,120,.6)';
         ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(fx2, fy2 + 5);
-        ctx.lineTo(fx2 + 2.5, fy2 - 3);
+        ctx.lineTo(fx2 + (alive ? 2.5 : 4), fy2 - (alive ? 3 : 0.5));
         ctx.moveTo(fx2 + 5, fy2 + 5);
-        ctx.lineTo(fx2 + 6.5, fy2);
+        ctx.lineTo(fx2 + 6.5, fy2 + (alive ? 0 : 3));
         ctx.stroke();
       }
     }
+  }
+  // 낮게 깔린 안개 — 가산 블렌딩으로 확실하게 '밝은 김'으로만 보이게
+  ctx.globalCompositeOperation = 'lighter';
+  for (let gx = Math.floor(x0 / 512); gx <= (x0 + w) / 512; gx++) {
+    for (let gy = Math.floor(y0 / 512); gy <= (y0 + h) / 512; gy++) {
+      const r = Math.abs(Math.sin(gx * 31.7 + gy * 17.3)) % 1;
+      if (r < 0.55) continue;
+      const mx = gx * 512 + r * 400 + Math.sin(t * 0.4 + gx + gy) * 30;
+      const my = gy * 512 + ((r * 977) % 1) * 400;
+      const mg = ctx.createRadialGradient(mx, my, 10, mx, my, 150);
+      mg.addColorStop(0, 'rgba(130,115,180,.07)');
+      mg.addColorStop(1, 'rgba(130,115,180,0)');
+      ctx.fillStyle = mg;
+      ctx.beginPath();
+      ctx.ellipse(mx, my, 150, 50, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  // 저 멀리 번개 — 폭풍이 아직 세상을 쥐고 있다
+  const lp = t % 6.7;
+  if (lp < 0.14) {
+    ctx.fillStyle = `rgba(210,190,255,${lp < 0.05 ? 0.09 : 0.04})`;
+    ctx.fillRect(x0, y0, w, h);
   }
 };
 
@@ -367,7 +434,7 @@ const drawHud = () => {
 
 /** @param {number} x @param {number} y @param {boolean} lit */
 const heart = (x, y, lit) => {
-  ctx.fillStyle = lit ? '#ff6b81' : 'rgba(40,25,70,.35)';
+  ctx.fillStyle = lit ? '#ff6b81' : 'rgba(255,255,255,.2)';
   ctx.beginPath();
   ctx.moveTo(x, y + 7);
   ctx.bezierCurveTo(x - 11, y - 2, x - 5, y - 9, x, y - 3);
@@ -443,32 +510,39 @@ const drawPick = () => {
 const drawHint = () => {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#e8ddff';
+  ctx.font = `600 ${Math.max(13, H * 0.03)}px system-ui, sans-serif`;
+  ctx.globalAlpha = 0.9;
+  ctx.fillText('The storm drank the colors of the world.', W / 2, H * 0.68);
   ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 3);
-  ctx.fillStyle = '#5d4a91';
+  ctx.fillStyle = '#ffd9e8';
   ctx.font = `700 ${Math.max(14, H * 0.032)}px system-ui, sans-serif`;
-  ctx.fillText('WASD / drag to gallop', W / 2, H * 0.72);
-  ctx.font = `500 ${Math.max(12, H * 0.026)}px system-ui, sans-serif`;
-  ctx.fillText('Your rainbow afterglow burns the gloom — keep moving!', W / 2, H * 0.72 + H * 0.05);
+  ctx.fillText('Gallop, last unicorn — your afterglow burns them back', W / 2, H * 0.68 + H * 0.055);
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = '#b9a8ff';
+  ctx.font = `500 ${Math.max(12, H * 0.025)}px system-ui, sans-serif`;
+  ctx.fillText('WASD / drag to move', W / 2, H * 0.68 + H * 0.105);
   ctx.globalAlpha = 1;
 };
 
 const drawOver = () => {
-  ctx.fillStyle = 'rgba(255,255,255,.55)';
+  ctx.fillStyle = 'rgba(15,8,35,.62)';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#5d4a91';
+  ctx.fillStyle = '#ffd9e8';
   ctx.font = `800 ${Math.max(24, H * 0.065)}px system-ui, sans-serif`;
   ctx.fillText('The gloom won… this time', W / 2, H * 0.3);
+  ctx.fillStyle = '#fff';
   ctx.font = `800 ${Math.max(20, H * 0.05)}px system-ui, sans-serif`;
   const mm = String((elapsed / 60) | 0).padStart(2, '0');
   const ss = String((elapsed | 0) % 60).padStart(2, '0');
-  ctx.fillText(`${mm}:${ss} · ${kills} clouds`, W / 2, H * 0.42);
-  ctx.fillStyle = '#8a76b8';
+  ctx.fillText(`${mm}:${ss} · ${kills} shadows · ${healed.size} blooms`, W / 2, H * 0.42);
+  ctx.fillStyle = '#b9a8ff';
   ctx.font = `600 ${Math.max(13, H * 0.03)}px system-ui, sans-serif`;
   ctx.fillText(kills >= best && kills > 0 ? 'NEW BEST!' : `best ${best}`, W / 2, H * 0.5);
   ctx.globalAlpha = 0.65 + 0.35 * Math.sin(t * 3);
-  ctx.fillStyle = '#5d4a91';
+  ctx.fillStyle = '#e8ddff';
   ctx.font = `700 ${Math.max(14, H * 0.032)}px system-ui, sans-serif`;
   ctx.fillText('tap or R to gallop again', W / 2, H * 0.64);
   ctx.globalAlpha = 1;
