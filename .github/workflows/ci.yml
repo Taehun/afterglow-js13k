@@ -1,0 +1,50 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install zip tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zip advancecomp
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # 13,312바이트 초과 시 build.mjs가 exit 1 → 여기서 CI가 실패한다 (하드 가드)
+      - name: Build (size guard)
+        run: npm run build
+
+      # playwright CLI 버전을 npm ci가 설치한 playwright-core 드라이버와 반드시 일치시킨다
+      # (드라이버와 브라우저 빌드는 버전 결합 — 특히 Firefox는 커스텀 패치 빌드)
+      - name: Install browsers for smoke test
+        run: npx "playwright@$(node -p "require('playwright-core/package.json').version")" install --with-deps chromium firefox
+
+      - name: Smoke test (no console errors, Chrome + Firefox)
+        run: npm run smoke
+
+      - name: Size summary
+        if: always()
+        run: |
+          if [ -f dist/size.json ]; then
+            ZIP=$(node -p "require('./dist/size.json').zip")
+            REM=$(node -p "require('./dist/size.json').remaining")
+            echo "### 📦 game.zip: ${ZIP} / 13312 bytes (남은 예산: ${REM} B)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game
+          path: |
+            dist/game.zip
+            dist/index.html
+            dist/size.json
