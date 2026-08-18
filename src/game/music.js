@@ -14,6 +14,8 @@ let ac;
 let master;
 /** @type {GainNode | undefined} */
 let delaySend;
+/** @type {AudioBuffer | undefined} */
+let noiseBuf;
 
 export const music = {
   muted: /** @type {boolean} */ (load('mute', false)),
@@ -52,6 +54,11 @@ const init = () => {
     fb.connect(delay);
     delay.connect(m);
     delaySend = ds;
+    // 하이햇용 노이즈 버퍼
+    const nb = c.createBuffer(1, 2600, 44100);
+    const nd = nb.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    noiseBuf = nb;
     music.playing = true;
   } catch { /* 오디오 불가 환경 — 게임은 계속 동작 */ }
 };
@@ -105,6 +112,35 @@ export const updateMusic = () => {
     // 레이어 3 (intensity ≥ .67): 베이스
     if (music.intensity >= 0.67 && s === 0) {
       pluck(note(root - 5) / 2, nextStep, 0.12, 1.6, 'sine');
+    }
+    // 레이어 4 (intensity ≥ .35): 타악 — 오프비트 하이햇 + 강박 킥
+    if (ac && master && noiseBuf && music.intensity >= 0.35 && s % 2 === 1) {
+      const src = ac.createBufferSource();
+      src.buffer = noiseBuf;
+      const hf = ac.createBiquadFilter();
+      hf.type = 'highpass';
+      hf.frequency.value = 6500;
+      const hg = ac.createGain();
+      hg.gain.setValueAtTime(0.035 + music.intensity * 0.03, nextStep);
+      hg.gain.exponentialRampToValueAtTime(0.0001, nextStep + 0.05);
+      src.connect(hf);
+      hf.connect(hg);
+      hg.connect(master);
+      src.start(nextStep);
+      src.stop(nextStep + 0.06);
+    }
+    if (ac && master && music.intensity >= 0.55 && (s === 0 || s === 4)) {
+      const o = ac.createOscillator();
+      const g = ac.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(135, nextStep);
+      o.frequency.exponentialRampToValueAtTime(46, nextStep + 0.11);
+      g.gain.setValueAtTime(0.22, nextStep);
+      g.gain.exponentialRampToValueAtTime(0.0001, nextStep + 0.17);
+      o.connect(g);
+      g.connect(master);
+      o.start(nextStep);
+      o.stop(nextStep + 0.2);
     }
     stepIdx++;
     nextStep += STEP;

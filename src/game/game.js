@@ -6,13 +6,13 @@ import { ctx, W, H } from '../engine/view.js';
 import { ptr, keys, keysJust } from '../engine/input.js';
 import { save, load } from '../engine/save.js';
 import { S } from '../engine/sfx.js';
-import { VW, VH, RAINBOW } from './const.js';
+import { VW, VH, AW, AH, RAINBOW } from './const.js';
 import { cam, updateCam, beginWorld, endWorld, overdrawX, overdrawY } from './cam.js';
 import { updateFx, drawFx, clearFx, sparkle, ring } from './fx.js';
 import {
   updateMusic, music, toggleMute, glissNote, rescueChord, winFanfare, eraseNote,
 } from './music.js';
-import { stats, resetStats, rollUpgrades } from './stats.js';
+import { stats, resetStats, rollUpgrades, UPGRADES } from './stats.js';
 import { P, trail, boost, resetPlayer, updatePlayer, drawTrail, drawPlayer, onTrail } from './player.js';
 import { mobs, resetMobs, spawnMobs, updateMobs, hurt, drawMob, ELITE, BRUTE } from './mobs.js';
 import {
@@ -37,14 +37,23 @@ let toastMsg = '';
 let shareMsg = '';
 /** @type {import('./stats.js').Upgrade[]} */
 let offers = [];
+let pickSel = 1; // 키보드/게임패드 카드 하이라이트
 /** @type {{x:number, y:number, v:number, t0:number}[]} */
 let dnums = [];
 /** @type {{x:number, y:number, m: import('./mobs.js').Mob, hue:number}[]} */
 let bolts = [];
 let starT = 0;
 let trailTickT = 0;
+let haloA = 0;   // 헤일로 공전각
+let beamT = 0;   // 프리즘 광선 쿨다운
+/** @type {{x:number, y:number, a:number, t0:number}[]} */
+let beamsFx = [];
 /** 색을 되찾은 초원 셀들 @type {Set<string>} */
 let healed = new Set();
+// 아레나를 덮는 총 셀 수 — 치유율(%)의 분모
+const TOTAL_CELLS = (Math.floor((AW * 2 - 1) / 96) + 1) * (Math.floor((AH * 2 - 1) / 96) + 1);
+let milestone = 0; // 다음 마일스톤 인덱스 (25/50/75/100%)
+const healedPct = () => Math.min(100, Math.round((healed.size / TOTAL_CELLS) * 100));
 
 const reset = () => {
   resetStats();
@@ -54,7 +63,11 @@ const reset = () => {
   clearFx();
   bolts = [];
   dnums = [];
+  beamsFx = [];
   healed = new Set();
+  milestone = 0;
+  haloA = 0;
+  beamT = 0;
   t = 0;
   elapsed = 0;
   kills = 0;
@@ -78,7 +91,9 @@ const dnum = (x, y, v) => {
 };
 
 const cellKey = (/** @type {number} */ x, /** @type {number} */ y) => `${Math.floor(x / 96)},${Math.floor(y / 96)}`;
-const heal = (/** @type {number} */ x, /** @type {number} */ y) => { if (healed.size < 2400) healed.add(cellKey(x, y)); };
+const heal = (/** @type {number} */ x, /** @type {number} */ y) => {
+  if (Math.abs(x) < AW && Math.abs(y) < AH) healed.add(cellKey(x, y));
+};
 
 /** @param {import('./mobs.js').Mob} m */
 const onKill = m => {
@@ -134,12 +149,41 @@ const useItem = kind => {
   }
 };
 
+/** 게임패드 (있으면) — 2025년 심사평 최다 반복 요구사항 */
+const pad = () => {
+  try { return navigator.getGamepads?.()[0] ?? null; } catch { return null; }
+};
+let gpPrev = { l: false, r: false, a: false, any: false };
+/** 게임패드 버튼 에지 검출 @returns {{l:boolean, r:boolean, a:boolean, any:boolean}} */
+const gpEdge = () => {
+  const g = pad();
+  const cur = {
+    l: !!g && (g.buttons[14]?.pressed || (g.axes[0] ?? 0) < -0.55),
+    r: !!g && (g.buttons[15]?.pressed || (g.axes[0] ?? 0) > 0.55),
+    a: !!g && !!g.buttons[0]?.pressed,
+    any: !!g && g.buttons.some(b => b.pressed),
+  };
+  const edge = {
+    l: cur.l && !gpPrev.l, r: cur.r && !gpPrev.r,
+    a: cur.a && !gpPrev.a, any: cur.any && !gpPrev.any,
+  };
+  gpPrev = cur;
+  return edge;
+};
+
 const moveInput = () => {
   let dx = 0, dy = 0;
   if (keys.has('ArrowLeft') || keys.has('KeyA')) dx -= 1;
   if (keys.has('ArrowRight') || keys.has('KeyD')) dx += 1;
   if (keys.has('ArrowUp') || keys.has('KeyW')) dy -= 1;
   if (keys.has('ArrowDown') || keys.has('KeyS')) dy += 1;
+  if (!dx && !dy) {
+    const g = pad();
+    if (g) {
+      const ax = g.axes[0] ?? 0, ay = g.axes[1] ?? 0;
+      if (Math.hypot(ax, ay) > 0.18) { dx = ax; dy = ay; }
+    }
+  }
   if (!dx && !dy && ptr.down) {
     const jx = ptr.x - ptr.sx, jy = ptr.y - ptr.sy;
     const d = Math.hypot(jx, jy);
@@ -161,7 +205,7 @@ export const update = dt => {
   if (state === 'over') {
     updateFx(dt);
     t += dt;
-    if (keysJust.has('KeyR') || keysJust.has('Space')) reset();
+    if (keysJust.has('KeyR') || keysJust.has('Space') || gpEdge().any) reset();
     else if (ptr.justDown) {
       const b = overBtnHit(ptr.sx, ptr.sy);
       if (b === 1) reset();
@@ -173,6 +217,11 @@ export const update = dt => {
   if (state === 'pick') {
     t += dt * 0.08;
     let sel = -1;
+    const ge = gpEdge();
+    // 하이라이트 이동: ←→/AD/게임패드 십자키, 확정: Enter/Space/A버튼
+    if (keysJust.has('ArrowLeft') || keysJust.has('KeyA') || ge.l) pickSel = (pickSel + 2) % 3;
+    if (keysJust.has('ArrowRight') || keysJust.has('KeyD') || ge.r) pickSel = (pickSel + 1) % 3;
+    if (keysJust.has('Enter') || keysJust.has('Space') || ge.a) sel = pickSel;
     if (keysJust.has('Digit1')) sel = 0;
     if (keysJust.has('Digit2')) sel = 1;
     if (keysJust.has('Digit3')) sel = 2;
@@ -201,24 +250,84 @@ export const update = dt => {
   updatePlayer(dx, dy, dt, t);
   heal(P.x, P.y);
 
+  // 치유 마일스톤 — 초원이 되살아날수록 선물이 핀다
+  const pct = healedPct();
+  const TH = [25, 50, 75, 100];
+  if (milestone < 4 && pct >= TH[milestone]) {
+    milestone++;
+    if (pct >= 100) {
+      toast('The meadow is whole again! ✿');
+      P.hp = stats.maxHp;
+      sparkle(P.x, P.y - 20, 40, 240);
+    } else {
+      toast(`Meadow ${TH[milestone - 1]}% restored — a gift blooms!`);
+    }
+    dropItem(P.x + 60, P.y - 40, t);
+    winFanfare();
+  }
+
   const ev = spawnMobs(dt, elapsed);
   if (ev.surge) { toast('The storm surges!'); shake = Math.min(0.5, shake + 0.2); eraseNote(); }
   if (ev.elite) toast('A crowned shadow emerges…');
   updateMobs(dt, t);
 
-  // 잔광 데미지 틱 (질주 중엔 2배)
+  // 잔광 + 헤일로 데미지 틱 (잔광은 질주 중 2배)
+  haloA += dt * (2.1 + stats.halo * 0.15);
   trailTickT -= dt;
   if (trailTickT <= 0) {
     trailTickT = 0.14;
     const dmg = stats.trailDmg * (boost.t > 0 ? 2 : 1);
     for (const m of [...mobs]) {
-      if (m.tick <= 0 && onTrail(m.x, m.y)) {
+      if (m.tick > 0) continue;
+      if (onTrail(m.x, m.y)) {
         m.tick = 0.24;
         dnum(m.x, m.y - m.r, dmg);
         if (hurt(m, dmg, 0, 0, elapsed)) onKill(m);
+        continue;
+      }
+      // 헤일로 별 접촉
+      for (let i = 0; i < stats.halo; i++) {
+        const a = haloA + (i * Math.PI * 2) / stats.halo;
+        const hx = P.x + Math.cos(a) * 76;
+        const hy = P.y - 16 + Math.sin(a) * 62;
+        if (Math.hypot(m.x - hx, m.y - hy) < 26 + m.r * 0.4) {
+          m.tick = 0.24;
+          dnum(m.x, m.y - m.r, 9);
+          if (hurt(m, 9, Math.cos(a) * 120, Math.sin(a) * 120, elapsed)) onKill(m);
+          break;
+        }
       }
     }
   }
+
+  // 프리즘 광선 — 가장 가까운 적 방향으로 관통 사격
+  if (stats.beam > 0) {
+    beamT -= dt;
+    if (beamT <= 0 && mobs.length) {
+      beamT = 3.4;
+      let tgt = mobs[0], td = 1e9;
+      for (const m of mobs) {
+        const d = Math.hypot(m.x - P.x, m.y - P.y);
+        if (d < td) { td = d; tgt = m; }
+      }
+      const a = Math.atan2(tgt.y - (P.y - 24), tgt.x - P.x);
+      beamsFx.push({ x: P.x, y: P.y - 24, a, t0: t });
+      const bdmg = 8 + stats.beam * 7;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      for (const m of [...mobs]) {
+        const rx = m.x - P.x, ry = m.y - (P.y - 24);
+        const proj = rx * ca + ry * sa;
+        if (proj < 0 || proj > 760) continue;
+        if (Math.abs(-rx * sa + ry * ca) < 26 + m.r * 0.5) {
+          dnum(m.x, m.y - m.r, bdmg);
+          if (hurt(m, bdmg, ca * 170, sa * 170, elapsed)) onKill(m);
+        }
+      }
+      glissNote(13);
+      shake = Math.min(0.4, shake + 0.12);
+    }
+  }
+  beamsFx = beamsFx.filter(b => t - b.t0 < 0.28);
 
   // 별 화살
   starT -= dt;
@@ -281,6 +390,7 @@ export const update = dt => {
   if (got.leveled) {
     state = 'pick';
     offers = rollUpgrades();
+    pickSel = 1;
     winFanfare();
     sparkle(P.x, P.y - 20, 20, 160);
   }
@@ -294,11 +404,17 @@ export const update = dt => {
 /** 유사난수 @param {number} a @param {number} b */
 const rnd = (a, b) => Math.abs(Math.sin(a * 12.9898 + b * 78.233) * 43758.5453) % 1;
 
+// 카메라 중심 (아레나 클램프 — 장벽 너머는 66px까지만 보인다)
+let camX = 0, camY = 0;
+
 export const draw = () => {
   updateCam();
+  camX = Math.max(-AW + VW / 2 - 66, Math.min(AW - VW / 2 + 66, P.x));
+  camY = Math.max(-AH + VH / 2 - 66, Math.min(AH - VH / 2 + 66, P.y));
   beginWorld();
-  ctx.translate(VW / 2 - P.x, VH / 2 - P.y);
+  ctx.translate(VW / 2 - camX, VH / 2 - camY);
   drawMeadow();
+  drawStormWall();
   drawTrail(t);
   drawLoot(t);
   drawItems(t);
@@ -311,6 +427,53 @@ export const draw = () => {
   scene.push({ y: P.y + 1, f: () => drawPlayer(t) });
   scene.sort((a, b) => a.y - b.y);
   for (const s of scene) s.f();
+
+  // 호른 헤일로 — 유니콘 주위를 도는 별들 (타원 궤도 = 유사 3D)
+  for (let i = 0; i < stats.halo; i++) {
+    const a = haloA + (i * Math.PI * 2) / stats.halo;
+    const hx = P.x + Math.cos(a) * 76;
+    const hy = P.y - 16 + Math.sin(a) * 62;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(255,235,160,.25)';
+    ctx.beginPath();
+    ctx.arc(hx, hy, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#ffe58a';
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(t * 4 + i);
+    ctx.beginPath();
+    for (let p = 0; p < 10; p++) {
+      const r = p % 2 ? 3 : 7;
+      const pa = (p * Math.PI) / 5;
+      p ? ctx.lineTo(Math.cos(pa) * r, Math.sin(pa) * r) : ctx.moveTo(Math.cos(pa) * r, Math.sin(pa) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // 프리즘 광선 잔상
+  for (const b of beamsFx) {
+    const p = (t - b.t0) / 0.28;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(b.a);
+    ctx.globalCompositeOperation = 'lighter';
+    const bw2 = 26 * (1 - p) + 6;
+    const g = ctx.createLinearGradient(0, 0, 760, 0);
+    g.addColorStop(0, `rgba(255,255,255,${0.8 * (1 - p)})`);
+    g.addColorStop(1, `rgba(200,160,255,${0.25 * (1 - p)})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, -bw2 / 2, 760, bw2);
+    for (let bnd = 0; bnd < 7; bnd++) {
+      ctx.fillStyle = RAINBOW[bnd].replace(')', ` / ${0.35 * (1 - p)})`);
+      ctx.fillRect(0, -bw2 / 2 + (bw2 * bnd) / 7, 760, bw2 / 7);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+  }
 
   for (const b of bolts) {
     ctx.fillStyle = `hsl(${b.hue} 95% 75%)`;
@@ -379,7 +542,7 @@ export const draw = () => {
  */
 const drawMeadow = () => {
   const ox = overdrawX(), oy = overdrawY();
-  const x0 = P.x - VW / 2 - ox, y0 = P.y - VH / 2 - oy;
+  const x0 = camX - VW / 2 - ox, y0 = camY - VH / 2 - oy;
   const w = VW + ox * 2, h = VH + oy * 2;
   ctx.fillStyle = '#47584c';
   ctx.fillRect(x0, y0, w, h);
@@ -413,6 +576,27 @@ const drawMeadow = () => {
     ctx.beginPath();
     ctx.arc(px2, py2, 68, 0, Math.PI * 2);
     ctx.fill();
+    // 되살아난 곳엔 나비가 산다
+    const br = rnd(cx * 5, cy * 9);
+    if (br < 0.22) {
+      const bx = px2 + Math.sin(t * 0.55 + cx * 7) * 34;
+      const by = py2 + Math.cos(t * 0.48 + cy * 5) * 26 + Math.sin(t * 3 + cx) * 4;
+      const flap = 0.3 + Math.abs(Math.sin(t * 11 + cx * 3)) * 0.7;
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.fillStyle = ['#ff9fb6', '#ffd76e', '#8fe0ff', '#c9a6ff'][(cx + cy) & 3];
+      ctx.beginPath();
+      ctx.ellipse(-3.2, 0, 4.2 * flap, 3, -0.45, 0, Math.PI * 2);
+      ctx.ellipse(3.2, 0, 4.2 * flap, 3, 0.45, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(60,50,70,.7)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(0, -2.5);
+      ctx.lineTo(0, 2.5);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // 꽃·풀 디테일
@@ -489,13 +673,59 @@ const drawMeadow = () => {
   }
 };
 
+/** 폭풍 장벽 — 초원의 끝. 그 밖은 색을 삼킨 폭풍이다. */
+const drawStormWall = () => {
+  const ox = overdrawX(), oy = overdrawY();
+  const x0 = camX - VW / 2 - ox, y0 = camY - VH / 2 - oy;
+  const w = VW + ox * 2, h = VH + oy * 2;
+  ctx.fillStyle = '#171226';
+  if (x0 < -AW) ctx.fillRect(x0, y0, -AW - x0, h);
+  if (x0 + w > AW) ctx.fillRect(AW, y0, x0 + w - AW, h);
+  const ix0 = Math.max(x0, -AW), ix1 = Math.min(x0 + w, AW);
+  if (y0 < -AH) ctx.fillRect(ix0, y0, ix1 - ix0, -AH - y0);
+  if (y0 + h > AH) ctx.fillRect(ix0, AH, ix1 - ix0, y0 + h - AH);
+
+  // 경계 소용돌이 블롭 — 장벽이 살아 움직인다
+  ctx.fillStyle = '#221b3a';
+  const blob = (/** @type {number} */ bx, /** @type {number} */ by, /** @type {number} */ i) => {
+    ctx.beginPath();
+    ctx.arc(bx + Math.sin(t * 0.9 + i * 2.7) * 9, by + Math.cos(t * 0.7 + i * 1.9) * 7, 30 + (i % 3) * 9, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  if (y0 < -AH + 40) for (let x = Math.floor(ix0 / 120) * 120; x <= ix1; x += 120) blob(x, -AH, x / 120);
+  if (y0 + h > AH - 40) for (let x = Math.floor(ix0 / 120) * 120; x <= ix1; x += 120) blob(x, AH, x / 120 + 5);
+  const iy0 = Math.max(y0, -AH), iy1 = Math.min(y0 + h, AH);
+  if (x0 < -AW + 40) for (let y = Math.floor(iy0 / 120) * 120; y <= iy1; y += 120) blob(-AW, y, y / 120 + 9);
+  if (x0 + w > AW - 40) for (let y = Math.floor(iy0 / 120) * 120; y <= iy1; y += 120) blob(AW, y, y / 120 + 13);
+
+  // 내연 글로우 라인 + 간헐 번개
+  ctx.strokeStyle = `rgba(150,120,220,${0.22 + 0.1 * Math.sin(t * 2.1)})`;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(-AW, -AH, AW * 2, AH * 2);
+  const lp = t % 2.9;
+  if (lp < 0.1) {
+    const r = rnd((t / 2.9) | 0, 7);
+    const side = (r * 4) | 0;
+    const bx = side < 2 ? (r * 2 - 1) * AW : side === 2 ? -AW : AW;
+    const by = side === 0 ? -AH : side === 1 ? AH : ((r * 7919) % 1 * 2 - 1) * AH;
+    ctx.strokeStyle = 'rgba(220,200,255,.85)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + 18, by + 24);
+    ctx.lineTo(bx - 6, by + 40);
+    ctx.lineTo(bx + 12, by + 62);
+    ctx.stroke();
+  }
+};
+
 /**
  * 높이 있는 소품 수집 — 나무/덤불/바위/억새. healed 셀에선 소생한다.
  * @param {{y:number, f:() => void}[]} scene
  */
 const collectProps = scene => {
   const ox = overdrawX(), oy = overdrawY();
-  const x0 = P.x - VW / 2 - ox, y0 = P.y - VH / 2 - oy;
+  const x0 = camX - VW / 2 - ox, y0 = camY - VH / 2 - oy;
   const w = VW + ox * 2, h = VH + oy * 2;
   const G = 224;
   for (let gx = Math.floor(x0 / G); gx <= (x0 + w) / G; gx++) {
@@ -504,6 +734,7 @@ const collectProps = scene => {
       if (r > 0.3) continue;
       const px2 = gx * G + rnd(gx, gy * 3) * (G - 60) + 30;
       const py2 = gy * G + rnd(gy * 3, gx) * (G - 60) + 30;
+      if (Math.abs(px2) > AW - 24 || Math.abs(py2) > AH - 20) continue; // 장벽 밖 소품 없음
       const alive = healed.has(cellKey(px2, py2));
       if (r < 0.05) scene.push({ y: py2, f: () => tree(px2, py2, alive, r) });
       else if (r < 0.11) scene.push({ y: py2, f: () => bush(px2, py2, alive, r) });
@@ -656,6 +887,26 @@ const drawHud = () => {
   ctx.fillStyle = '#ffd9e8';
   ctx.fillText(`✦ ${kills}`, W / 2, 56);
   for (let i = 0; i < stats.maxHp; i++) heart2(24 + i * 26, 26, i < P.hp);
+  // 초원 치유율 — 꽃 아이콘 + %
+  const pct2 = healedPct();
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#ff9fb6';
+  for (let p = 0; p < 5; p++) {
+    const a = (p * Math.PI * 2) / 5;
+    ctx.beginPath();
+    ctx.arc(22 + Math.cos(a) * 3.4, 56 + Math.sin(a) * 3.4, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(22, 56, 1.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.font = 'bold 13px system-ui, sans-serif';
+  ctx.strokeStyle = 'rgba(15,25,18,.55)';
+  ctx.lineWidth = 3;
+  ctx.strokeText(`${pct2}%`, 33, 57);
+  ctx.fillStyle = '#d9f0dc';
+  ctx.fillText(`${pct2}%`, 33, 57);
   const bh = 12;
   ctx.fillStyle = 'rgba(15,25,18,.5)';
   ctx.fillRect(0, H - bh, W, bh);
@@ -729,6 +980,7 @@ const drawPick = () => {
     const r = rects[i];
     ctx.save();
     ctx.translate(r.x + r.w / 2, r.y + r.h / 2 + Math.sin(t * 40 + i) * 2);
+    if (i === pickSel) ctx.scale(1.06, 1.06); // 키보드/패드 하이라이트
     ctx.shadowColor = 'rgba(5,12,8,.5)';
     ctx.shadowBlur = 16;
     ctx.fillStyle = 'rgba(255,255,255,.95)';
@@ -736,6 +988,11 @@ const drawPick = () => {
     ctx.roundRect(-r.w / 2, -r.h / 2, r.w, r.h, 14);
     ctx.fill();
     ctx.shadowColor = 'transparent';
+    if (i === pickSel) {
+      ctx.strokeStyle = '#ffd76e';
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+    }
     ctx.save();
     ctx.clip();
     ctx.fillStyle = RAINBOW[(i * 2 + 1) % 7];
@@ -799,7 +1056,7 @@ const overBtnHit = (sx, sy) => {
 const shareScore = () => {
   const mm = String((elapsed / 60) | 0).padStart(2, '0');
   const ss = String((elapsed | 0) % 60).padStart(2, '0');
-  const text = `AFTERGLOW 🌈🦄 I outlasted the storm for ${mm}:${ss} — ${kills} shadows banished, ${healed.size} blooms restored. Can you beat me?`;
+  const text = `AFTERGLOW 🌈🦄 I outlasted the storm for ${mm}:${ss} — ${kills} shadows banished, meadow ${healedPct()}% restored. Can you beat me?`;
   try {
     if (navigator.share) {
       navigator.share({ text, url: location.href }).catch(() => { /* 사용자가 취소 */ });
@@ -822,7 +1079,7 @@ const drawOver = () => {
   ctx.font = `800 ${Math.max(20, H * 0.05)}px system-ui, sans-serif`;
   const mm = String((elapsed / 60) | 0).padStart(2, '0');
   const ss = String((elapsed | 0) % 60).padStart(2, '0');
-  ctx.fillText(`${mm}:${ss} · ${kills} shadows · ${healed.size} blooms`, W / 2, H * 0.38);
+  ctx.fillText(`${mm}:${ss} · ${kills} shadows · meadow ${healedPct()}%`, W / 2, H * 0.38);
   ctx.fillStyle = '#bcd9c2';
   ctx.font = `600 ${Math.max(13, H * 0.03)}px system-ui, sans-serif`;
   ctx.fillText(kills >= best && kills > 0 ? 'NEW BEST!' : `best ${best}`, W / 2, H * 0.46);
@@ -856,6 +1113,7 @@ const drawOver = () => {
 
 // 테스트 훅 (제출 빌드 전 제거)
 /** @type {any} */ (globalThis).agforce = (/** @type {number} */ kind) => useItem(kind);
+/** @type {any} */ (globalThis).agup = (/** @type {number} */ i) => UPGRADES[i]?.apply();
 /** @type {any} */ (globalThis).agdbg = () => ({
   state, elapsed: elapsed | 0, kills, hp: P.hp, level: xp.level,
   mobs: mobs.length, shards: shards.length, trail: trail.length,

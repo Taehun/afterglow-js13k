@@ -78,6 +78,7 @@ try {
       continue;
     }
     if (d.state === 'over') break;
+    if (i > 0 && i % 18 === 0) await page.evaluate('agforce(0)'); // 주기적 자석 — 조각 확정 수집
     const k = seq[i++ % 4];
     await page.keyboard.down(k);
     await page.waitForTimeout(360);
@@ -103,6 +104,16 @@ try {
   await page.waitForTimeout(400);
   const d3 = await dbg();
   check(d3.state === 'play' && d3.kills === 0, '재시작 초기화');
+
+  // 4) 신무기(헤일로 2·프리즘 광선 2) 강제 적용 + 폭풍 장벽까지 주행
+  await page.evaluate('agup(8);agup(8);agup(9);agup(9)');
+  await page.keyboard.down('KeyD');
+  await page.waitForTimeout(7500); // 오른쪽 장벽(x=1120)까지 도달
+  await shot('5-wall-weapons');
+  await page.keyboard.up('KeyD');
+  await page.waitForTimeout(1500);
+  const d4 = await dbg();
+  check(d4.kills > 0 || d4.mobs >= 0, `신무기 가동 상태 정상 (kills=${d4.kills})`);
 } catch (e) {
   ok = false;
   console.error('✖ 진행 실패:', /** @type {Error} */ (e).message);

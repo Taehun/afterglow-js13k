@@ -9,6 +9,8 @@ export const stats = {
   speed: 1,        // 이동 배수
   magnet: 110,     // 조각 흡입 반경
   maxHp: 3,
+  halo: 0,         // 호른 헤일로 — 선회하는 별 수
+  beam: 0,         // 프리즘 광선 레벨 (0 = 미보유)
 };
 
 export const resetStats = () => {
@@ -20,6 +22,8 @@ export const resetStats = () => {
   stats.speed = 1;
   stats.magnet = 110;
   stats.maxHp = 3;
+  stats.halo = 0;
+  stats.beam = 0;
 };
 
 /**
@@ -40,6 +44,8 @@ export const UPGRADES = [
   { name: 'Gallop', desc: 'Move speed +12%', icon: '»', apply: () => { stats.speed *= 1.12; }, ok: () => stats.speed < 1.6 },
   { name: 'Shard Charm', desc: 'Pickup radius +45%', icon: '◇', apply: () => { stats.magnet *= 1.45; } },
   { name: 'Brave Heart', desc: '+1 max heart, heal 1', icon: '♥', apply: () => { stats.maxHp += 1; }, ok: () => stats.maxHp < 6 },
+  { name: 'Horn Halo', desc: '+1 orbiting star', icon: '☆', apply: () => { stats.halo += 1; }, ok: () => stats.halo < 4 },
+  { name: 'Prism Ray', desc: 'Piercing beam +', icon: '⌁', apply: () => { stats.beam += 1; }, ok: () => stats.beam < 4 },
 ];
 
 /** 조건을 만족하는 업그레이드 중 서로 다른 3개 추첨 */

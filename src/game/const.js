@@ -5,6 +5,10 @@
 export const VW = 960;
 export const VH = 540;
 
+// 아레나 반경 — 초원은 유한하고, 그 밖은 폭풍이다 (중심 0,0)
+export const AW = 1120;
+export const AH = 720;
+
 // ── 아치 드로잉 ────────────────────────────────────────────────────────────
 export const SNAP = 20;         // 끝점 스냅 그리드 (px)
 export const ARC_MIN = 80;      // 최소 현(chord) 길이
