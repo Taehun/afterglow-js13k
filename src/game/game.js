@@ -155,6 +155,7 @@ const pad = () => {
 };
 let uiPress = false; // 이번 포인터 프레스가 UI 버튼에서 시작됨 (조이스틱 무시)
 let volDrag = false; // 볼륨 바 드래그 중
+let volOpen = 0; // 볼륨 팝업 표시 잔여 시간 (0 = 닫힘)
 let gpPrev = { l: false, r: false, a: false, any: false };
 /** 게임패드 버튼 에지 검출 @returns {{l:boolean, r:boolean, a:boolean, any:boolean}} */
 const gpEdge = () => {
@@ -199,13 +200,14 @@ export const update = dt => {
   updateCam();
   updateMusic();
   if (keysJust.has('KeyM')) toggleMute();
-  // 볼륨 컨트롤 (우측 상단) — 아이콘 탭 = 음소거 토글, 세로 바 드래그 = 볼륨(0 = 음소거).
-  // 이 프레스는 조이스틱으로 안 잡힌다
+  // 볼륨 컨트롤 (우측 상단) — 아이콘 클릭 시 세로 바 팝업, 드래그 = 볼륨(0 = 음소거),
+  // 몇 초 방치하면 자동으로 닫힌다. 이 프레스는 조이스틱으로 안 잡힌다
   if (ptr.justDown && Math.abs(ptr.sx - (W - 34)) < 24) {
-    if (Math.abs(ptr.sy - 30) < 24) { toggleMute(); uiPress = true; }
-    else if (ptr.sy > 56 && ptr.sy < 134) { volDrag = true; uiPress = true; }
+    if (Math.abs(ptr.sy - 30) < 24) { volOpen = volOpen > 0 ? 0 : 4; uiPress = true; }
+    else if (volOpen > 0 && ptr.sy > 56 && ptr.sy < 134) { volDrag = true; uiPress = true; }
   }
-  if (volDrag) setVolume(Math.min(1, Math.max(0, (124 - ptr.y) / 58)));
+  if (volDrag) { setVolume(Math.min(1, Math.max(0, (122 - ptr.y) / 56))); volOpen = 4; }
+  if (volOpen > 0) volOpen -= dt;
   if (!ptr.down) { uiPress = false; volDrag = false; }
   if (shake > 0) shake -= dt;
   if (hurtFlash > 0) hurtFlash -= dt;
@@ -1015,19 +1017,27 @@ const drawHud = () => {
     ctx.arc(W - 29.5, 30, 5.5, -0.9, 0.9);
     ctx.stroke();
   }
-  // 볼륨 바 (상하 드래그) — 채워진 높이 = 볼륨, 0이면 음소거
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = 'rgba(15,25,18,.45)';
-  ctx.beginPath();
-  ctx.moveTo(W - 34, 66);
-  ctx.lineTo(W - 34, 124);
-  ctx.stroke();
-  if (music.volume) {
-    ctx.strokeStyle = '#fff';
+  // 볼륨 팝업 (아이콘 클릭 시) — 채워진 높이 = 볼륨, 0이면 음소거, 방치 시 페이드아웃
+  if (volOpen > 0) {
+    ctx.globalAlpha = Math.min(1, volOpen * 2);
+    ctx.fillStyle = 'rgba(15,25,18,.45)';
     ctx.beginPath();
-    ctx.moveTo(W - 34, 124 - 58 * music.volume);
-    ctx.lineTo(W - 34, 124);
+    ctx.roundRect(W - 46, 56, 24, 76, 12);
+    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(255,255,255,.3)';
+    ctx.beginPath();
+    ctx.moveTo(W - 34, 66);
+    ctx.lineTo(W - 34, 122);
     ctx.stroke();
+    if (music.volume) {
+      ctx.strokeStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(W - 34, 122 - 56 * music.volume);
+      ctx.lineTo(W - 34, 122);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   // 초원 치유율 — 꽃 아이콘 + %
