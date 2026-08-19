@@ -1,9 +1,8 @@
 // 음악/사운드 — WebAudio 미니 시퀀서.
-// 컨셉: 젠틀 셀틱 판타지 — ElevenLabs 레퍼런스 트랙(D장조, 68bpm, D 페달+V 터치)을
-// 분석·이식한 컨투어. 
-// 끊김 없이 잔물결치는 하프 아르페지오가 주역, 코드를 따라가는 지속 패드,
-// 쉼 많은 롱톤 휘슬 에어, 깊은 딜레이 잔향. 타악기 없음(레퍼런스 준수) —
-// 고조는 하프 벨로시티와 한 옥타브 위 '에코 하프'가 만든다.
+// 컨셉: 아련한 셀틱 애가 — ElevenLabs 레퍼런스(42bpm, 하행 라멘트 베이스 D→C→B→G)를
+// 분석·이식. 마디에 한 번 하프가 코드를 조용히 쓸어내리고(롤드 코드),
+// 그 위로 쉼 많은 하행 휘슬 애가가 노래한다. 마지막 마디는 통째로 침묵.
+// 타악기 없음 — 고조는 옥타브 위 '에코 롤'과 저음 플럭이 만든다.
 // 모든 인터랙션 사운드도 같은 조성이라 불협화음이 구조적으로 없다.
 
 import { onFirstInput } from '../engine/input.js';
@@ -23,10 +22,10 @@ export const music = {
   playing: false,
 };
 
-// D 장조 — 따뜻하고 몽환적인 셀틱 판타지의 기본색
+// G 장조 — 하행 라멘트(D→C→Bm→G)가 사는 집. 아련함의 조성
 const MODE = [0, 2, 4, 5, 7, 9, 11];
-/** @param {number} semi D3(146.83Hz) 기준 반음 오프셋 */
-const freq = semi => 146.83 * 2 ** (semi / 12);
+/** @param {number} semi G2(98Hz) 기준 반음 오프셋 */
+const freq = semi => 98 * 2 ** (semi / 12);
 /** 스케일 도수 → 주파수 (옥타브 자동, 비정수 입력 방어) @param {number} i */
 const note = i => {
   i = Math.floor(i);
@@ -142,27 +141,22 @@ const pad = (tm, root, dur) => {
 };
 
 // ── 배경 시퀀서 — 잔물결 하프 (마디 = 8스텝) ──────────────────────────────
-const STEP = 0.2205; // 68bpm 16분음표 — 레퍼런스 실측
+const STEP = 0.36; // 42bpm — 아련한 레퍼런스 실측
 let nextStep = 0;
 let stepIdx = 0;
-// 코드 진행 (8마디 형식): D 페달 위에 IV의 온기와 V-I 종지 — 루프에 기승전결
-const PROG = [0, 0, 4, 0, 3, 0, 4, 4];
-// 하프 잔물결 2패턴 교대 — 9도 색채 상행/하행 + 쉼표(-1)로 숨 쉬는 패턴
-const ARPS = [
-  [0, -1, 4, 7, 9, -1, 7, 4],
-  [0, -1, 7, -1, 9, -1, 4, -1],
-];
-// 휘슬 에어 — ElevenLabs 레퍼런스에서 추출·양자화한 8마디(64스텝) 컨투어:
-// A절 = A4(5도)에 머물며 E5를 스치고, B절 = D5로 해소하며 A5 정점 후 롱톤 마무리
+// 코드 진행: 하행 라멘트 D → C → Bm → G — 베이스가 한 계단씩 내려간다
+const PROG = [4, 3, 2, 0];
+// 휘슬 애가 — 하행 컨투어 8마디(64스텝): 길게 끌다 한 계단씩 떨어지고,
+// 잠깐 치솟아 아리다가(E5) 낮게 해소, 마지막 마디는 통째로 침묵(여백)
 const MEL = [
-  [11, 6], [-1, 2],
-  [11, 2], [15, 3], [11, 3],
-  [11, 4], [9, 2], [11, 2],
-  [-1, 2], [11, 6],
-  [14, 4], [14, 2], [15, 2],
-  [18, 4], [15, 2], [14, 2],
-  [14, 6], [11, 2],
-  [14, 8],
+  [18, 6], [-1, 2],
+  [17, 3], [16, 3], [-1, 2],
+  [14, 6], [-1, 2],
+  [-1, 4], [16, 2], [17, 2],
+  [18, 4], [19, 2], [18, 2],
+  [17, 4], [16, 4],
+  [16, 2], [14, 6],
+  [-1, 8],
 ];
 /** 멜로디 시작 스텝 → [도수, 길이] @type {Record<number, number[]>} */
 const MEL_AT = {};
@@ -178,28 +172,27 @@ export const updateMusic = () => {
   while (nextStep < ac.currentTime + 0.25) {
     const bar = Math.floor(stepIdx / 8);
     const s = stepIdx % 8;
-    const root = PROG[bar % 8];
+    const root = PROG[bar % 4];
     // 코드 패드 — 마디마다 진행을 따라간다
     if (s === 0) pad(nextStep, root, STEP * 8 + 0.5);
     // 피아노풍 저음 — 마디 첫 박 (intensity ≥ .35)
     if (s === 0 && music.intensity >= 0.35) {
       pluck(note(root), nextStep, 0.11, 2, 'sine');
     }
-    // 하프 잔물결 — 마디마다 패턴 교대, 쉼표는 쉼표대로, 타이밍·세기 휴머나이즈
-    const ap = ARPS[bar % 2][s];
-    let tone = root + 7;
-    if (ap >= 0) {
-      tone = root + 7 + ap;
-      pluck(
-        note(tone),
-        nextStep + (Math.random() - 0.5) * 0.02,
-        ((s === 0 ? 0.07 : 0.045) + music.intensity * 0.02) * (0.85 + Math.random() * 0.3),
-        3.2,
-      );
+    // 롤드 코드 — 마디에 한 번, 하프가 조용히 쓸어내린다 (연속 잔물결 폐기)
+    if (s === 0) {
+      [0, 2, 4].forEach((d2, i) =>
+        pluck(note(root + 7 + d2), nextStep + i * 0.05,
+          (0.055 + music.intensity * 0.02) * (0.9 + Math.random() * 0.2), 3.8));
+      // 에코 롤 (intensity ≥ .2) — 두 스텝 뒤 한 옥타브 위에서 아득하게
+      if (music.intensity >= 0.2) {
+        [0, 2, 4].forEach((d2, i) =>
+          pluck(note(root + 14 + d2), nextStep + STEP * 2 + i * 0.05, 0.022, 3));
+      }
     }
-    // 에코 하프 (intensity ≥ .55) — 한 스텝 뒤 한 옥타브 위에서 되울린다
-    if (ap >= 0 && music.intensity >= 0.2) {
-      pluck(note(tone + 7), nextStep + STEP * 0.5, 0.028, 1.6);
+    // 눈물방울 — 두 마디에 한 번, 높은 곳에서 한 음이 떨어진다
+    if (s === 5 && bar % 2) {
+      pluck(note(root + 16), nextStep + (Math.random() - 0.5) * 0.05, 0.032, 3.2);
     }
     // 휘슬 에어 — 처음부터 노래한다 (이 곡의 얼굴), 고조되면 커진다
     {
