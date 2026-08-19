@@ -1,9 +1,15 @@
+# CI — lint / typecheck / 13KB 사이즈 가드 / 실브라우저 스모크 / E2E 플레이테스트
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
-  build:
+  ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -12,50 +18,58 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Install zip tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq zip advancecomp
-
       - run: npm ci
+
+      - name: Lint
+        run: npm run lint
 
       - name: Typecheck
         run: npm run typecheck
 
-      # 13,312바이트 초과 시 build.mjs가 exit 1 → 여기서 CI가 실패한다 (하드 가드)
-      - name: Build (size guard)
+      # 로컬 빌드와 동일 조건(zopfli 재압축)으로 사이즈를 재기 위해 advzip 설치
+      - name: Install advzip
+        run: sudo apt-get update -q && sudo apt-get install -yq advancecomp
+
+      - name: Playwright version
+        id: pw
+        run: echo "v=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ steps.pw.outputs.v }}
+
+      # playwright-core와 같은 버전의 CLI로 설치해야 프로토콜이 맞는다
+      - name: Install Playwright browsers (Chromium + Firefox)
+        run: npx -y playwright@${{ steps.pw.outputs.v }} install --with-deps chromium firefox
+
+      # 13,312B 초과 시 build.mjs가 exit 1 → 사이즈 체크를 겸한다
+      - name: Build + size guard (≤ 13,312 B)
         run: npm run build
 
-      # playwright CLI 버전을 npm ci가 설치한 playwright-core 드라이버와 반드시 일치시킨다
-      # (드라이버와 브라우저 빌드는 버전 결합 — 특히 Firefox는 커스텀 패치 빌드)
-      - name: Install browsers for smoke test
-        run: npx "playwright@$(node -p "require('playwright-core/package.json').version")" install --with-deps chromium firefox
+      - name: Size summary
+        run: |
+          SIZE=$(stat -c%s dist/game.zip)
+          echo "### 📦 dist/game.zip: **${SIZE} B** / 13,312 B ($(( SIZE * 100 / 13312 ))%)" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Smoke test (no console errors, Chrome + Firefox)
+      # 압축 산출물을 실브라우저(Chromium+Firefox)에서 구동 — 콘솔 에러 0 검증
+      - name: Smoke test
         run: npm run smoke
 
-      - name: E2E playtest (clear all levels)
+      # E2E 자동 플레이 — 아이템/레벨업/서지/게임오버/재시작 어서션
+      - name: Playtest
         run: npm run playtest
+
+      - name: Upload game.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-zip
+          path: dist/game.zip
 
       - name: Upload playtest screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playtest-screenshots
+          name: playtest-shots
           path: .playtest/
           if-no-files-found: ignore
-
-      - name: Size summary
-        if: always()
-        run: |
-          if [ -f dist/size.json ]; then
-            ZIP=$(node -p "require('./dist/size.json').zip")
-            REM=$(node -p "require('./dist/size.json').remaining")
-            echo "### 📦 game.zip: ${ZIP} / 13312 bytes (남은 예산: ${REM} B)" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: game
-          path: |
-            dist/game.zip
-            dist/index.html
-            dist/size.json

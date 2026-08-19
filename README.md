@@ -1,5 +1,7 @@
 # AFTERGLOW 🦄🌈
 
+[![CI](https://github.com/Taehun/afterglow-js13k/actions/workflows/ci.yml/badge.svg)](https://github.com/Taehun/afterglow-js13k/actions/workflows/ci.yml)
+
 > The storm swallowed the world's colors.
 > Run, last unicorn — your afterglow brings them back.
 
@@ -39,8 +41,9 @@ More commands:
 | `npm run size` | build + one-line size summary |
 | `npm run smoke` | runs the built game in real Chromium/Firefox — asserts zero console errors |
 | `npm run playtest` | automated end-to-end play session with assertions + screenshots |
+| `npm run lint` | ESLint (flat config) over `src/` and `tools/` |
 | `npm run typecheck` | JSDoc-based `tsc --strict` |
-| `npm run check` | typecheck + build + smoke |
+| `npm run check` | lint + typecheck + build + smoke |
 
 ## Under the 13 kB hood
 

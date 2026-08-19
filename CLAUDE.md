@@ -73,8 +73,9 @@ docs/IDEAS.md·docs/research/, 폐기된 프로토는 arclight/looplight/sunshow
 | `npm run build -- --log` | 결과를 `size-history.csv`에 기록 (회귀 추적) |
 | `npm run smoke` | 빌드 산출물을 실제 브라우저로 검증 (콘솔 에러 0, 애니메이션 구동) |
 | `npm run playtest` | E2E 자동 플레이 — 3레벨 전부 실제로 클리어 + 단계별 스크린샷(.playtest/) |
+| `npm run lint` | ESLint flat config (src=브라우저, tools=노드, vendor 제외) |
 | `npm run typecheck` | JSDoc 기반 tsc strict 체크 |
-| `npm run check` | typecheck + build + smoke 전부 |
+| `npm run check` | lint + typecheck + build + smoke 전부 |
 
 **Node >= 22 필요** (`fs.globSync`, `import.meta.dirname` 사용; CI는 Node 24).
 `zip`은 시스템 기본, `advzip`은 선택(`brew install advancecomp`) — 없으면 zip -9로 폴백.

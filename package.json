@@ -14,11 +14,15 @@
     "size": "node tools/build.mjs --quiet",
     "smoke": "node tools/smoke.mjs",
     "playtest": "node tools/playtest.mjs",
+    "lint": "eslint .",
     "typecheck": "tsc -p jsconfig.json",
-    "check": "npm run typecheck && npm run build && npm run smoke"
+    "check": "npm run lint && npm run typecheck && npm run build && npm run smoke"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "esbuild": "^0.25.0",
+    "eslint": "^10.8.1",
+    "globals": "^17.11.0",
     "playwright-core": "^1.55.0",
     "roadroller": "^2.1.0",
     "terser": "^5.36.0",
