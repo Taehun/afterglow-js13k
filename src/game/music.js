@@ -145,10 +145,13 @@ const pad = (tm, root, dur) => {
 const STEP = 0.2205; // 68bpm 16분음표 — 레퍼런스 실측
 let nextStep = 0;
 let stepIdx = 0;
-// 코드 진행 (스케일 도수 루트, 마디당 1개): D 페달에 V 터치 — 레퍼런스 실측
-const PROG = [0, 0, 4, 0];
-// 하프 잔물결 — 상행-하행 브로큰 코드 (도수 오프셋)
-const ARP = [0, 2, 4, 6, 7, 6, 4, 2];
+// 코드 진행 (8마디 형식): D 페달 위에 IV의 온기와 V-I 종지 — 루프에 기승전결
+const PROG = [0, 0, 4, 0, 3, 0, 4, 4];
+// 하프 잔물결 2패턴 교대 — 9도 색채 상행/하행 + 쉼표(-1)로 숨 쉬는 패턴
+const ARPS = [
+  [0, 2, 4, 7, 9, 7, 4, 2],
+  [0, 4, 7, -1, 9, -1, 7, 4],
+];
 // 휘슬 에어 — ElevenLabs 레퍼런스에서 추출·양자화한 8마디(64스텝) 컨투어:
 // A절 = A4(5도)에 머물며 E5를 스치고, B절 = D5로 해소하며 A5 정점 후 롱톤 마무리
 const MEL = [
@@ -175,24 +178,33 @@ export const updateMusic = () => {
   while (nextStep < ac.currentTime + 0.25) {
     const bar = Math.floor(stepIdx / 8);
     const s = stepIdx % 8;
-    const root = PROG[bar % 4];
+    const root = PROG[bar % 8];
     // 코드 패드 — 마디마다 진행을 따라간다
     if (s === 0) pad(nextStep, root, STEP * 8 + 0.5);
     // 피아노풍 저음 — 마디 첫 박 (intensity ≥ .35)
     if (s === 0 && music.intensity >= 0.35) {
       pluck(note(root), nextStep, 0.11, 2, 'sine');
     }
-    // 하프 잔물결 — 매 스텝, 첫 박 액센트, 하프답게 길게 링잉 (이 곡의 주역)
-    const tone = root + 7 + ARP[s];
-    pluck(note(tone), nextStep, (s === 0 ? 0.08 : 0.05) + music.intensity * 0.02, 2.2);
+    // 하프 잔물결 — 마디마다 패턴 교대, 쉼표는 쉼표대로, 타이밍·세기 휴머나이즈
+    const ap = ARPS[bar % 2][s];
+    let tone = root + 7;
+    if (ap >= 0) {
+      tone = root + 7 + ap;
+      pluck(
+        note(tone),
+        nextStep + (Math.random() - 0.5) * 0.02,
+        ((s === 0 ? 0.08 : 0.05) + music.intensity * 0.02) * (0.85 + Math.random() * 0.3),
+        2.2,
+      );
+    }
     // 에코 하프 (intensity ≥ .55) — 한 스텝 뒤 한 옥타브 위에서 되울린다
-    if (music.intensity >= 0.55) {
+    if (ap >= 0 && music.intensity >= 0.55) {
       pluck(note(tone + 7), nextStep + STEP * 0.5, 0.028, 1.6);
     }
-    // 휘슬 에어 (intensity ≥ .12) — 8마디 롱톤 선율, 쉼표는 쉼표대로
-    if (music.intensity >= 0.12) {
+    // 휘슬 에어 — 처음부터 노래한다 (이 곡의 얼굴), 고조되면 커진다
+    {
       const mel = MEL_AT[stepIdx % 64];
-      if (mel && mel[0] >= 0) flute(note(mel[0]), nextStep, mel[1] * STEP * 0.94, 0.095 + music.intensity * 0.035);
+      if (mel && mel[0] >= 0) flute(note(mel[0]), nextStep, mel[1] * STEP * 0.94, 0.085 + music.intensity * 0.045);
     }
     stepIdx++;
     nextStep += STEP;
