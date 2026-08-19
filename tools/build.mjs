@@ -61,11 +61,15 @@ if (TEST) {
 
 // ── 2. terser: 3-pass 압축 + 프로퍼티 맹글링 (_프리픽스 컨벤션) ────────────
 const terserOut = await minify(rawJs, {
+  ecma: 2020,
   compress: {
     passes: 3,
     unsafe: true,
     unsafe_arrows: true,
     unsafe_math: true,
+    unsafe_methods: true,
+    booleans_as_integers: true, // 소스에 불리언 엄격비교(===true 등) 없음을 확인함
+    hoist_funs: true,
     pure_getters: true,
     toplevel: true,
   },
@@ -82,12 +86,25 @@ const minJs = terserOut.code;
 // 주의: Roadroller 출력은 자체 엔트로피 코딩된 고엔트로피 데이터라 zip 단계에서
 // 거의 더 안 줄어드는 반면, terser 출력은 deflate가 크게 줄인다. 따라서 후보
 // 선택은 반드시 "최종 zip 크기" 기준으로 한다 — 예산(13,312B)이 재는 것이 그것이다.
+// Roadroller의 -O1 파라미터 탐색은 랜덤이라 실행/머신마다 출력 크기가 ±20B쯤
+// 흔들린다(CI에서만 예산 초과하는 사고의 원인). 그래서 --max(-O2)가 찾은 최적
+// 파라미터를 JSON으로 캐시해 두고, 평소 빌드는 그 파라미터로 결정적으로 압축한다.
+// 캐시가 없으면 1회 -O1 탐색으로 생성한다. 코드가 크게 바뀌면 --max로 갱신할 것.
+const PARAMS_FILE = path.join(root, 'tools/roadroller-params.json');
 /** @type {{name: string, js: string}[]} */
 const candidates = [{ name: 'terser', js: minJs }];
 if (!FAST) {
   try {
-    const packer = new Packer([{ data: minJs, type: 'js', action: 'eval' }], {});
-    await packer.optimize(MAX ? 2 : 1);
+    /** @type {import('roadroller').OptimizedPackerOptions | {}} */
+    let params = {};
+    if (!MAX && fs.existsSync(PARAMS_FILE)) {
+      params = JSON.parse(fs.readFileSync(PARAMS_FILE, 'utf8'));
+    }
+    const packer = new Packer([{ data: minJs, type: 'js', action: 'eval' }], params);
+    const res = await packer.optimize(MAX ? 2 : 'sparseSelectors' in params ? 0 : 1);
+    if (MAX || !('sparseSelectors' in params)) {
+      fs.writeFileSync(PARAMS_FILE, JSON.stringify(res.best) + '\n');
+    }
     const { firstLine, secondLine } = packer.makeDecoder();
     candidates.push({ name: 'roadroller', js: firstLine + '\n' + secondLine });
   } catch (e) {
@@ -100,7 +117,7 @@ if (!FAST) {
 const wrapHtml = js =>
   `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,user-scalable=no">` +
   `<title>${TITLE}</title><link rel=icon href=data:,>` +
-  `<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100%;height:100%;touch-action:none}</style>` +
+  `<style>body{overflow:hidden}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}</style>` +
   `<canvas id=c></canvas><script>${js}</script>`;
 
 let advzipUsed = false;
