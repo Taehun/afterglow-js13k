@@ -38,6 +38,13 @@ const ctx = await esbuild.context({
 });
 
 await ctx.watch();
-const { port } = await ctx.serve({ servedir: out, port: 1313 });
-console.log(`dev server → http://localhost:${port}`);
+// 1313이 이미 사용 중이면(좀비 프로세스 등) 빈 포트로 폴백
+let srv;
+try {
+  srv = await ctx.serve({ servedir: out, port: 1313 });
+} catch {
+  console.log('포트 1313 사용 중 — 다른 포트로 엽니다 (점유 프로세스 확인: lsof -i :1313)');
+  srv = await ctx.serve({ servedir: out });
+}
+console.log(`dev server → http://localhost:${srv.port}`);
 console.log(`(사이즈 확인은 별도로: npm run size)`);
