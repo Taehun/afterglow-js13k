@@ -432,8 +432,13 @@ let camX = 0, camY = 0;
 
 export const draw = () => {
   updateCam();
-  camX = Math.max(-AW + VW / 2 - 130, Math.min(AW - VW / 2 + 130, P.x));
-  camY = Math.max(-AH + VH / 2 - 130, Math.min(AH - VH / 2 + 130, P.y));
+  // 가시 범위는 줌에 따라 변한다(모바일 줌 플로어) — 실제 반폭 기준으로 클램프해야
+  // 세로 화면에서 섬 좌우 끝까지 걸어가도 플레이어가 화면 밖으로 잘리지 않는다.
+  // (음수 가드 생략: cw<0은 가로세로비 3.74:1 초과 화면에서만 발생 — 32:9도 안 걸림)
+  const cw = AW + 130 - W / cam.s / 2;
+  const ch = AH + 130 - H / cam.s / 2;
+  camX = Math.max(-cw, Math.min(cw, P.x));
+  camY = Math.max(-ch, Math.min(ch, P.y));
   beginWorld();
   ctx.translate(VW / 2 - camX, VH / 2 - camY);
   drawScene();

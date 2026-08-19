@@ -51,7 +51,7 @@ if (TEST) {
   const td = path.join(root, 'dist-test');
   fs.mkdirSync(td, { recursive: true });
   fs.writeFileSync(path.join(td, 'index.html'),
-    `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,user-scalable=no">` +
+    `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">` +
     `<title>${TITLE}</title><link rel=icon href=data:,>` +
     `<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100%;height:100%;touch-action:none}</style>` +
     `<canvas id=c></canvas><script>${rawJs}</script>`);
@@ -115,7 +115,7 @@ if (!FAST) {
 // ── 4. 각 후보를 HTML로 감싸 동일한 zip 경로로 압축 → 작은 zip 선택 ────────
 /** @param {string} js */
 const wrapHtml = js =>
-  `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,user-scalable=no">` +
+  `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">` +
   `<title>${TITLE}</title><link rel=icon href=data:,>` +
   `<style>body{overflow:hidden}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}</style>` +
   `<canvas id=c></canvas><script>${js}</script>`;
