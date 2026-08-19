@@ -59,7 +59,9 @@ docs/IDEAS.md·docs/research/, 폐기된 프로토는 arclight/looplight/sunshow
 | 9/14 | Unfinished 제출 마지노선(미제출 드래프트 삭제됨) / 사소한 버그 수정 PR 가능 |
 | 9/14~10/4 | 투표 — 플레이 불가 수준의 치명적 버그만 수정 PR 가능 |
 
-드래프트는 **동시에 1개만** 열 수 있다. 등록: https://js13kgames.com/submit (GitHub 로그인).
+드래프트는 **동시에 1개만** 열 수 있다. 제출 폼은 **개막(8/13) 시점엔 미오픈**
+("The Submit form will open in a few days" — 공식 블로그, 8/20 확인 시점에도 /submit은 404).
+열리면 js13kgames.com 상단 LOG IN 경유로 접근 — 블로그/소셜 공지를 확인할 것.
 
 ## 명령어
 
@@ -168,4 +170,5 @@ draw는 rAF당 1회. endFrame을 렌더 프레임 끝으로 옮기면 안 된다
 - [ ] Chrome + Firefox 실물 플레이, 콘솔 에러 0
 - [ ] 모바일 실기기 터치 플레이
 - [ ] GitHub 리포 public + README에 빌드 방법 명시 (`npm ci && npm run build`)
-- [ ] https://js13kgames.com/submit 에서 draft 등록 → 라이브 프리뷰 확인 → 제출
+- [ ] js13kgames.com LOG IN → 제출 폼에서 draft 등록 → 라이브 프리뷰 확인 → 제출
+      (폼 오픈 여부 먼저 확인 — 8/20 기준 아직 미오픈)
