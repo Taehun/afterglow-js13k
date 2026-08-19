@@ -26,11 +26,11 @@ const UNLOCK = [0, 45, 90, 999, 25, 40];
  * @typedef {Object} Mob
  * @property {number} type
  * @property {number} x @property {number} y
- * @property {number} hp @property {number} maxHp
+ * @property {number} hp @property {number} _m
  * @property {number} r @property {number} sp
- * @property {number} flash @property {number} kx @property {number} ky
- * @property {number} seed @property {number} tick
- * @property {number} lunge 다트: 돌진 타이머
+ * @property {number} _f @property {number} kx @property {number} ky
+ * @property {number} _s @property {number} _k
+ * @property {number} _l 다트: 돌진 타이머
  */
 
 /** @type {Mob[]} */
@@ -47,10 +47,10 @@ const make = (type, x, y, elapsed) => {
   const mul = 1 + elapsed * (type === ELITE ? 0.012 : 0.011);
   mobs.push({
     type, x, y,
-    hp: hp * mul, maxHp: hp * mul,
+    hp: hp * mul, _m: hp * mul,
     r, sp: sp * (1 + elapsed * 0.0015),
-    flash: 0, kx: 0, ky: 0,
-    seed: Math.random() * 9, tick: 0, lunge: 1 + Math.random() * 2,
+    _f: 0, kx: 0, ky: 0,
+    _s: Math.random() * 9, _k: 0, _l: 1 + Math.random() * 2,
   });
 };
 
@@ -114,12 +114,12 @@ export const updateMobs = (dt, t) => {
     let sp = m.sp;
     if (m.type === DART) {
       // 다트: 2초에 한 번 0.4초간 3배 돌진
-      m.lunge -= dt;
-      if (m.lunge < 0.4) sp *= 3.1;
-      if (m.lunge <= 0) m.lunge = 1.7 + Math.random();
+      m._l -= dt;
+      if (m._l < 0.4) sp *= 3.1;
+      if (m._l <= 0) m._l = 1.7 + Math.random();
       // 지그재그
-      m.x += (-(P.y - m.y) / d) * Math.sin(t * 5 + m.seed * 9) * 60 * dt;
-      m.y += ((P.x - m.x) / d) * Math.sin(t * 5 + m.seed * 9) * 60 * dt;
+      m.x += (-(P.y - m.y) / d) * Math.sin(t * 5 + m._s * 9) * 60 * dt;
+      m.y += ((P.x - m.x) / d) * Math.sin(t * 5 + m._s * 9) * 60 * dt;
     }
     m.x += ((P.x - m.x) / d) * sp * dt + m.kx * dt;
     m.y += ((P.y - m.y) / d) * sp * dt + m.ky * dt;
@@ -127,8 +127,8 @@ export const updateMobs = (dt, t) => {
     [m.x, m.y] = clampIsle(m.x, m.y, 12);
     m.kx *= 1 - Math.min(1, dt * 8);
     m.ky *= 1 - Math.min(1, dt * 8);
-    if (m.flash > 0) m.flash -= dt;
-    if (m.tick > 0) m.tick -= dt;
+    if (m._f > 0) m._f -= dt;
+    if (m._k > 0) m._k -= dt;
   }
 };
 
@@ -139,7 +139,7 @@ export const updateMobs = (dt, t) => {
  */
 export const hurt = (m, dmg, kx, ky, elapsed = 0) => {
   m.hp -= dmg;
-  m.flash = 0.09;
+  m._f = 0.09;
   m.kx += kx;
   m.ky += ky;
   if (m.hp <= 0) {
@@ -161,8 +161,8 @@ export const hurt = (m, dmg, kx, ky, elapsed = 0) => {
 /** @param {Mob} m @param {number} t */
 export const drawMob = (m, t) => {
   ctx.save();
-  ctx.translate(m.x, m.y + Math.sin(t * 2 + m.seed * 7) * 2.5);
-  const white = m.flash > 0;
+  ctx.translate(m.x, m.y + Math.sin(t * 2 + m._s * 7) * 2.5);
+  const white = m._f > 0;
   const d = Math.hypot(P.x - m.x, P.y - m.y) || 1;
   const lx = (P.x - m.x) / d, ly = (P.y - m.y) / d;
 
@@ -207,7 +207,7 @@ const drawWispKind = (m, t, white, lx, ly) => {
   ctx.fillStyle = g;
   ctx.beginPath();
   ctx.arc(0, -3, 13, Math.PI, 0);
-  const wob = t * (m.type === DART ? 11 : 7) + m.seed * 9;
+  const wob = t * (m.type === DART ? 11 : 7) + m._s * 9;
   for (let i = 0; i <= 6; i++) {
     const wx = 13 - (26 * i) / 6;
     ctx.lineTo(wx, 10 + Math.sin(wob + i * 2.1) * 3.5 + (i % 2) * 4);
@@ -260,11 +260,11 @@ const drawWispKind = (m, t, white, lx, ly) => {
       }
     }
     // 엘리트/큰 놈 HP 링
-    if (m.type === ELITE && m.hp < m.maxHp) {
+    if (m.type === ELITE && m.hp < m._m) {
       ctx.strokeStyle = 'rgba(255,235,140,.75)';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(0, -2, 17, -Math.PI / 2, -Math.PI / 2 + (m.hp / m.maxHp) * Math.PI * 2);
+      ctx.arc(0, -2, 17, -Math.PI / 2, -Math.PI / 2 + (m.hp / m._m) * Math.PI * 2);
       ctx.stroke();
     }
   }
@@ -301,7 +301,7 @@ const drawBrute = (m, t, white, lx, ly) => {
     ctx.fill();
   }
   if (!white) {
-    if (Math.sin(t * 9 + m.seed * 13) > 0.82) {
+    if (Math.sin(t * 9 + m._s * 13) > 0.82) {
       ctx.strokeStyle = 'rgba(255,235,140,.9)';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -329,11 +329,11 @@ const drawBrute = (m, t, white, lx, ly) => {
       ctx.lineTo(hs * 4, -7);
       ctx.stroke();
     }
-    if (m.hp < m.maxHp) {
+    if (m.hp < m._m) {
       ctx.strokeStyle = 'rgba(255,235,140,.75)';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(0, 0, 32, -Math.PI / 2, -Math.PI / 2 + (m.hp / m.maxHp) * Math.PI * 2);
+      ctx.arc(0, 0, 32, -Math.PI / 2, -Math.PI / 2 + (m.hp / m._m) * Math.PI * 2);
       ctx.stroke();
     }
   }

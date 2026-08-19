@@ -285,9 +285,9 @@ export const update = dt => {
     trailTickT = 0.14;
     const dmg = stats._dmg * (boost.t > 0 ? 2 : 1);
     for (const m of [...mobs]) {
-      if (m.tick > 0) continue;
+      if (m._k > 0) continue;
       if (onTrail(m.x, m.y)) {
-        m.tick = stats._dmg >= 7.8 ? 0.15 : 0.24; // 시너지: 타오르는 잔광
+        m._k = stats._dmg >= 7.8 ? 0.15 : 0.24; // 시너지: 타오르는 잔광
         dnum(m.x, m.y - m.r, dmg);
         if (hurt(m, dmg, 0, 0, elapsed)) onKill(m);
         continue;
@@ -298,7 +298,7 @@ export const update = dt => {
         const hx = P.x + Math.cos(a) * 76;
         const hy = P.y - 16 + Math.sin(a) * 62;
         if (Math.hypot(m.x - hx, m.y - hy) < 26 + m.r * 0.4) {
-          m.tick = 0.24;
+          m._k = 0.24;
           dnum(m.x, m.y - m.r, 9);
           if (hurt(m, 9, Math.cos(a) * 120, Math.sin(a) * 120, elapsed)) onKill(m);
           break;

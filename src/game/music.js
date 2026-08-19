@@ -42,17 +42,17 @@ const init = () => {
     m.gain.value = music.muted ? 0 : 1;
     const lp = c.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = 4200; // 모서리를 둥글려 꿈결처럼
+    lp.frequency.value = 3400; // 모서리를 둥글려 꿈결처럼
     m.connect(lp);
     lp.connect(c.destination);
     master = m;
     // 피드백 딜레이 — 하프 플럭에 잔향감을 주는 가장 싼 방법
     const delay = c.createDelay(1);
-    delay.delayTime.value = 0.39;
+    delay.delayTime.value = 0.45;
     const fb = c.createGain();
-    fb.gain.value = 0.47;
+    fb.gain.value = 0.53;
     const ds = c.createGain();
-    ds.gain.value = 0.62;
+    ds.gain.value = 0.68;
     ds.connect(delay);
     delay.connect(fb);
     fb.connect(delay);
@@ -73,7 +73,7 @@ onFirstInput(init);
 const pluck = (f, t, vol = 0.16, dur = 0.9, type = 'triangle') => {
   if (!ac || !master || !delaySend) return;
   const voices = type === 'triangle'
-    ? [[f, vol, dur, 'triangle'], [f * 1.004, vol * 0.5, dur * 0.9, 'triangle'],
+    ? [[f, vol, dur, 'triangle'], [f * 1.006, vol * 0.5, dur * 0.9, 'triangle'],
        [f * 2, vol * 0.28, dur * 0.5, 'sine'], [f * 3.01, vol * 0.09, dur * 0.28, 'sine']]
     : [[f, vol, dur, type]];
   for (const [vf, vv, vd, vt] of voices) {
@@ -102,15 +102,15 @@ const flute = (f, tm, dur, vol = 0.11) => {
   o.type = 'triangle';
   o.frequency.value = f;
   const lfo = ac.createOscillator();
-  lfo.frequency.value = 4.8;
+  lfo.frequency.value = 4;
   const lg = ac.createGain();
-  lg.gain.value = f * 0.007;
+  lg.gain.value = f * 0.009;
   lfo.connect(lg);
   lg.connect(o.frequency);
   const g = ac.createGain();
   g.gain.setValueAtTime(0, tm);
-  g.gain.linearRampToValueAtTime(vol, tm + 0.14);
-  g.gain.setValueAtTime(vol, tm + Math.max(0.1, dur - 0.14));
+  g.gain.linearRampToValueAtTime(vol, tm + 0.22);
+  g.gain.setValueAtTime(vol, tm + Math.max(0.1, dur - 0.26));
   g.gain.linearRampToValueAtTime(0.0001, tm + dur);
   o.connect(g);
   g.connect(master);
@@ -125,7 +125,7 @@ const flute = (f, tm, dur, vol = 0.11) => {
  * @param {number} tm @param {number} root @param {number} dur */
 const pad = (tm, root, dur) => {
   if (!ac || !master) return;
-  for (const [deg, v] of [[root, 0.05], [root + 4, 0.035], [root + 7, 0.02]]) {
+  for (const [deg, v] of [[root, 0.065], [root + 4, 0.05], [root + 7, 0.03]]) {
     const o = ac.createOscillator();
     o.type = 'sine';
     o.frequency.value = note(deg);
@@ -149,8 +149,8 @@ let stepIdx = 0;
 const PROG = [0, 0, 4, 0, 3, 0, 4, 4];
 // 하프 잔물결 2패턴 교대 — 9도 색채 상행/하행 + 쉼표(-1)로 숨 쉬는 패턴
 const ARPS = [
-  [0, 2, 4, 7, 9, 7, 4, 2],
-  [0, 4, 7, -1, 9, -1, 7, 4],
+  [0, -1, 4, 7, 9, -1, 7, 4],
+  [0, -1, 7, -1, 9, -1, 4, -1],
 ];
 // 휘슬 에어 — ElevenLabs 레퍼런스에서 추출·양자화한 8마디(64스텝) 컨투어:
 // A절 = A4(5도)에 머물며 E5를 스치고, B절 = D5로 해소하며 A5 정점 후 롱톤 마무리
@@ -193,12 +193,12 @@ export const updateMusic = () => {
       pluck(
         note(tone),
         nextStep + (Math.random() - 0.5) * 0.02,
-        ((s === 0 ? 0.08 : 0.05) + music.intensity * 0.02) * (0.85 + Math.random() * 0.3),
-        2.2,
+        ((s === 0 ? 0.07 : 0.045) + music.intensity * 0.02) * (0.85 + Math.random() * 0.3),
+        3.2,
       );
     }
     // 에코 하프 (intensity ≥ .55) — 한 스텝 뒤 한 옥타브 위에서 되울린다
-    if (ap >= 0 && music.intensity >= 0.55) {
+    if (ap >= 0 && music.intensity >= 0.2) {
       pluck(note(tone + 7), nextStep + STEP * 0.5, 0.028, 1.6);
     }
     // 휘슬 에어 — 처음부터 노래한다 (이 곡의 얼굴), 고조되면 커진다
