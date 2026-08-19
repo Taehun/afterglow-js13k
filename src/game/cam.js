@@ -8,6 +8,9 @@ export const cam = { s: 1, ox: 0, oy: 0 };
 
 export const updateCam = () => {
   cam.s = Math.min(W / VW, H / VH);
+  // 모바일 줌 — 작은 화면에서 fit-스케일로는 유니콘이 너무 작아진다(폰 세로 ≈0.4).
+  // 짧은 변 기준으로 카메라를 당기되, 데스크톱(플로어 1)에는 영향이 없다.
+  cam.s = Math.max(cam.s, Math.min(1, Math.min(W, H) / 460));
   cam.ox = (W - VW * cam.s) / 2;
   cam.oy = (H - VH * cam.s) / 2;
 };

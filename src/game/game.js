@@ -517,6 +517,22 @@ export const draw = () => {
   ctx.globalAlpha = 1;
   endWorld();
 
+  // 플로팅 가상 패드 — 터치 시작점에 링이 나타나고 노브가 드래그 방향을 보여준다
+  if (ptr.down && !uiPress && state === 'play') {
+    const jx = ptr.x - ptr.sx, jy = ptr.y - ptr.sy;
+    const d = Math.hypot(jx, jy) || 1;
+    const k = Math.min(d, 46) / d;
+    ctx.strokeStyle = '#fff5';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(ptr.sx, ptr.sy, 46, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#fff8';
+    ctx.beginPath();
+    ctx.arc(ptr.sx + jx * k, ptr.sy + jy * k, 17, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // 폭탄 섬광
   if (bombFlash > 0) {
     ctx.fillStyle = `rgba(255,245,220,${bombFlash * 1.6})`;
