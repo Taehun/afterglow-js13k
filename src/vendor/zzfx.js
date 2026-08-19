@@ -34,4 +34,7 @@ const initAudio = () => {
 // 반드시 사용자 제스처 이후(initAudio 이후)에 호출할 것.
 const getAudioCtx = () => (zzfxX ||= new AudioContext());
 
-export { zzfx, zzfxV, initAudio, getAudioCtx };
+// 효과음 마스터 볼륨 (0~1) — 게임 볼륨 설정에서 호출 (기본 게인 0.3에 곱)
+const setZzfxVolume = v => { zzfxV = 0.3 * v; };
+
+export { zzfx, zzfxV, initAudio, getAudioCtx, setZzfxVolume };

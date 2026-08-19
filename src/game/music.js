@@ -6,7 +6,7 @@
 // 모든 인터랙션 사운드도 같은 조성이라 불협화음이 구조적으로 없다.
 
 import { onFirstInput } from '../engine/input.js';
-import { initAudio, getAudioCtx } from '../vendor/zzfx.js';
+import { initAudio, getAudioCtx, setZzfxVolume } from '../vendor/zzfx.js';
 import { save, load } from '../engine/save.js';
 
 /** @type {AudioContext | undefined} */
@@ -15,9 +15,11 @@ let ac;
 let master;
 /** @type {GainNode | undefined} */
 let delaySend;
+/** @type {GainNode | undefined} */
+let fxm; // 효과음 버스 — 로우패스/딜레이를 우회해 배경 위로 또렷하게 선다
 
 export const music = {
-  muted: /** @type {boolean} */ (load('mute', false)),
+  volume: /** @type {number} */ (load('vol', 1)), // 0~1, 0 = 음소거
   intensity: 0, // 0~1 — 구조 진행도에 따라 레이어 추가
   playing: false,
 };
@@ -38,7 +40,6 @@ const init = () => {
     const c = getAudioCtx();
     ac = c;
     const m = c.createGain();
-    m.gain.value = music.muted ? 0 : 1;
     const lp = c.createBiquadFilter();
     lp.type = 'lowpass';
     lp.frequency.value = 3400; // 모서리를 둥글려 꿈결처럼
@@ -57,6 +58,10 @@ const init = () => {
     fb.connect(delay);
     delay.connect(m);
     delaySend = ds;
+    const fx = c.createGain();
+    fx.connect(c.destination);
+    fxm = fx;
+    setVolume(music.volume); // 저장된 볼륨을 마스터·효과음·zzfx에 일괄 적용
     music.playing = true;
   } catch { /* 오디오 불가 환경 — 게임은 계속 동작 */ }
 };
@@ -68,9 +73,11 @@ onFirstInput(init);
  * type이 'sine'이면 단일 보이스(저음/효과음용).
  * @param {number} f 주파수 @param {number} t 시작 시각(ctx 시간)
  * @param {number} [vol] @param {number} [dur] @param {OscillatorType} [type]
+ * @param {number} [dry] 참이면 효과음 버스로 — 로우패스/딜레이 우회 (또렷하게)
  */
-const pluck = (f, t, vol = 0.16, dur = 0.9, type = 'triangle') => {
+const pluck = (f, t, vol = 0.16, dur = 0.9, type = 'triangle', dry = 0) => {
   if (!ac || !master || !delaySend) return;
+  if (t < ac.currentTime) t = ac.currentTime; // 음수/과거 시각 방어 — 콘솔 에러 0
   const voices = type === 'triangle'
     ? [[f, vol, dur, 'triangle'], [f * 1.006, vol * 0.5, dur * 0.9, 'triangle'],
        [f * 2, vol * 0.28, dur * 0.5, 'sine'], [f * 3.01, vol * 0.09, dur * 0.28, 'sine']]
@@ -84,8 +91,8 @@ const pluck = (f, t, vol = 0.16, dur = 0.9, type = 'triangle') => {
     g.gain.linearRampToValueAtTime(/** @type {number} */ (vv), t + 0.005);
     g.gain.exponentialRampToValueAtTime(0.0001, t + /** @type {number} */ (vd));
     o.connect(g);
-    g.connect(master);
-    g.connect(delaySend);
+    g.connect(dry && fxm ? fxm : master);
+    if (!dry) g.connect(delaySend);
     o.start(t);
     o.stop(t + /** @type {number} */ (vd) + 0.05);
   }
@@ -202,46 +209,53 @@ export const updateMusic = () => {
   }
 };
 
-// ── 인터랙션 사운드 (전부 같은 조성 위에서) ────────────────────────────────
+// ── 인터랙션 사운드 (전부 같은 조성 위에서, 드라이 버스로 또렷하게) ─────────
+/** 드라이 버스 플럭 — 인터랙션 전용 숏핸드
+ * @param {number} i 스케일 도수 @param {number} v 볼륨 @param {number} d 길이
+ * @param {number} [off] 시작 오프셋 @param {OscillatorType} [ty] */
+const fxp = (i, v, d, off = 0, ty = 'triangle') => {
+  if (ac) pluck(note(i), ac.currentTime + off, v, d, ty, 1);
+};
+
 /** 아치 드로잉 글리산도 — 진행도에 따라 상행 @param {number} i 스텝 */
-export const glissNote = i => { if (ac) pluck(note(i), ac.currentTime, 0.12, 0.5); };
+export const glissNote = i => fxp(i, 0.15, 0.5);
 
 /** 아치 충전(유니콘이 무지개를 지나감) — 짧은 2음 상행 */
 export const rescueNoteSmall = () => {
-  if (!ac) return;
-  pluck(note(7), ac.currentTime, 0.1, 0.5);
-  pluck(note(9), ac.currentTime + 0.08, 0.1, 0.6);
+  fxp(7, 0.1, 0.5);
+  fxp(9, 0.1, 0.6, 0.08);
 };
 
 /** 망아지 구조 — 상행 플러리시 */
 export const rescueChord = () => {
-  if (!ac) return;
-  const t = ac.currentTime;
-  [0, 2, 4, 7, 9].forEach((n, i) => pluck(note(n), t + i * 0.06, 0.14, 0.8));
+  [0, 2, 4, 7, 9].forEach((n, i) => fxp(n, 0.15, 0.8, i * 0.06));
 };
 
 /** 레벨 클리어 팡파레 */
 export const winFanfare = () => {
-  if (!ac) return;
-  const t = ac.currentTime;
-  [0, 4, 7, 9, 12, 14].forEach((n, i) => pluck(note(n), t + i * 0.09, 0.16, 1.2));
+  [0, 4, 7, 9, 12, 14].forEach((n, i) => fxp(n, 0.17, 1.2, i * 0.09));
 };
 
 /** 빗방울이 무지개에 막힘 — 높은 플링크 */
-export const plinkNote = () => {
-  if (ac) pluck(note(10 + (Math.random() * 5 | 0)), ac.currentTime, 0.05, 0.35);
-};
+export const plinkNote = () => fxp(10 + (Math.random() * 5 | 0), 0.07, 0.35);
 
 /** 아치 지우기 */
-export const eraseNote = () => {
-  if (ac) { pluck(note(4), ac.currentTime, 0.08, 0.3); pluck(note(0), ac.currentTime + 0.07, 0.08, 0.3); }
-};
+export const eraseNote = () => { fxp(4, 0.09, 0.3); fxp(0, 0.09, 0.3, 0.07); };
 
 /** 리스폰 포프 */
-export const poofNote = () => { if (ac) pluck(note(-3), ac.currentTime, 0.09, 0.4, 'sine'); };
+export const poofNote = () => fxp(-3, 0.1, 0.4, 0, 'sine');
 
-export const toggleMute = () => {
-  music.muted = !music.muted;
-  save('mute', music.muted);
-  if (master) master.gain.value = music.muted ? 0 : 1;
+let lastVol = 1; // 음소거 해제 시 복원할 볼륨
+
+/** 볼륨 설정 (0~1, 0 = 음소거) — 음악·인터랙션·zzfx 효과음 전부에 적용 @param {number} v */
+export const setVolume = v => {
+  music.volume = v;
+  if (v) lastVol = v; // 드래그로 0을 만들어도 마지막 볼륨으로 복원되게
+  save('vol', v);
+  const g = v * v; // 지각 보정 커브
+  if (master) master.gain.value = g;
+  if (fxm) fxm.gain.value = g;
+  setZzfxVolume(g);
 };
+
+export const toggleMute = () => setVolume(music.volume ? 0 : lastVol);
