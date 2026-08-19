@@ -62,7 +62,7 @@ export const updateLoot = (dt, t) => {
   /** @type {number[]} */
   const gotItems = [];
   if (vacuum.t > 0) vacuum.t -= dt;
-  const magnetR = vacuum.t > 0 ? 1e5 : stats.magnet;
+  const magnetR = vacuum.t > 0 ? 1e5 : stats._mag;
   // 아이템: 만료·획득 처리
   items = items.filter(it => {
     if (t - it.t0 > ITEM_LIFE) return false;
@@ -89,7 +89,7 @@ export const updateLoot = (dt, t) => {
     if (d < 20) { // 획득
       picked++;
       if (s.heart) {
-        if (P.hp < stats.maxHp) { P.hp++; healed = true; }
+        if (P.hp < stats._hp) { P.hp++; healed = true; }
       } else {
         xp.cur++;
         if (xp.cur >= xp.need) {

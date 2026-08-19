@@ -124,7 +124,7 @@ const useItem = kind => {
     bombFlash = 0.3;
     freeze = 0.07;
     shake = 0.7;
-    S.pop();
+    S.boom();
     ring(P.x, P.y - 14);
     for (const m of [...mobs]) {
       const d = Math.hypot(m.x - P.x, m.y - P.y);
@@ -144,7 +144,7 @@ const useItem = kind => {
     }
     glissNote(12);
   } else if (kind === HEART) {
-    P.hp = Math.min(stats.maxHp, P.hp + 1);
+    P.hp = Math.min(stats._hp, P.hp + 1);
     rescueChord();
   }
 };
@@ -238,7 +238,7 @@ export const update = dt => {
     }
     if (sel >= 0 && offers[sel]) {
       offers[sel].apply();
-      if (offers[sel].name === 'Brave Heart') P.hp = Math.min(stats.maxHp, P.hp + 1);
+      if (offers[sel].name === 'Brave Heart') P.hp = Math.min(stats._hp, P.hp + 1);
       state = 'play';
       rescueChord();
       ring(P.x, P.y - 20);
@@ -264,7 +264,7 @@ export const update = dt => {
     milestone++;
     if (pct >= 100) {
       toast('The meadow is whole again! ✿');
-      P.hp = stats.maxHp;
+      P.hp = stats._hp;
       sparkle(P.x, P.y - 20, 40, 240);
     } else {
       toast(`Meadow ${TH[milestone - 1]}% restored — a gift blooms!`);
@@ -279,22 +279,22 @@ export const update = dt => {
   updateMobs(dt, t);
 
   // 잔광 + 헤일로 데미지 틱 (잔광은 질주 중 2배)
-  haloA += dt * (2.1 + stats.halo * 0.15);
+  haloA += dt * (2.1 + stats._halo * 0.15);
   trailTickT -= dt;
   if (trailTickT <= 0) {
     trailTickT = 0.14;
-    const dmg = stats.trailDmg * (boost.t > 0 ? 2 : 1);
+    const dmg = stats._dmg * (boost.t > 0 ? 2 : 1);
     for (const m of [...mobs]) {
       if (m.tick > 0) continue;
       if (onTrail(m.x, m.y)) {
-        m.tick = 0.24;
+        m.tick = stats._dmg >= 7.8 ? 0.15 : 0.24; // 시너지: 타오르는 잔광
         dnum(m.x, m.y - m.r, dmg);
         if (hurt(m, dmg, 0, 0, elapsed)) onKill(m);
         continue;
       }
       // 헤일로 별 접촉
-      for (let i = 0; i < stats.halo; i++) {
-        const a = haloA + (i * Math.PI * 2) / stats.halo;
+      for (let i = 0; i < stats._halo; i++) {
+        const a = haloA + (i * Math.PI * 2) / stats._halo;
         const hx = P.x + Math.cos(a) * 76;
         const hy = P.y - 16 + Math.sin(a) * 62;
         if (Math.hypot(m.x - hx, m.y - hy) < 26 + m.r * 0.4) {
@@ -308,26 +308,28 @@ export const update = dt => {
   }
 
   // 프리즘 광선 — 가장 가까운 적 방향으로 관통 사격
-  if (stats.beam > 0) {
+  if (stats._beam > 0) {
     beamT -= dt;
     if (beamT <= 0 && mobs.length) {
       beamT = 3.4;
-      let tgt = mobs[0], td = 1e9;
-      for (const m of mobs) {
-        const d = Math.hypot(m.x - P.x, m.y - P.y);
-        if (d < td) { td = d; tgt = m; }
-      }
-      const a = Math.atan2(tgt.y - (P.y - 24), tgt.x - P.x);
-      beamsFx.push({ x: P.x, y: P.y - 24, a, t0: t });
-      const bdmg = 8 + stats.beam * 7;
-      const ca = Math.cos(a), sa = Math.sin(a);
-      for (const m of [...mobs]) {
-        const rx = m.x - P.x, ry = m.y - (P.y - 24);
-        const proj = rx * ca + ry * sa;
-        if (proj < 0 || proj > 760) continue;
-        if (Math.abs(-rx * sa + ry * ca) < 26 + m.r * 0.5) {
-          dnum(m.x, m.y - m.r, bdmg);
-          if (hurt(m, bdmg, ca * 170, sa * 170, elapsed)) onKill(m);
+      // 시너지: 프리즘 합창 — 헤일로 별 2개당 갈래 +1 (최대 3갈래)
+      const rays = Math.min(3, 1 + ((stats._halo / 2) | 0));
+      const near2 = [...mobs]
+        .sort((a2, b2) => Math.hypot(a2.x - P.x, a2.y - P.y) - Math.hypot(b2.x - P.x, b2.y - P.y))
+        .slice(0, rays);
+      const bdmg = 8 + stats._beam * 7;
+      for (const tgt of near2) {
+        const a = Math.atan2(tgt.y - (P.y - 24), tgt.x - P.x);
+        beamsFx.push({ x: P.x, y: P.y - 24, a, t0: t });
+        const ca = Math.cos(a), sa = Math.sin(a);
+        for (const m of [...mobs]) {
+          const rx = m.x - P.x, ry = m.y - (P.y - 24);
+          const proj = rx * ca + ry * sa;
+          if (proj < 0 || proj > 760) continue;
+          if (Math.abs(-rx * sa + ry * ca) < 26 + m.r * 0.5) {
+            dnum(m.x, m.y - m.r, bdmg);
+            if (hurt(m, bdmg, ca * 170, sa * 170, elapsed)) onKill(m);
+          }
         }
       }
       glissNote(13);
@@ -342,7 +344,7 @@ export const update = dt => {
     starT = 1.05;
     const near = [...mobs]
       .sort((a, b) => Math.hypot(a.x - P.x, a.y - P.y) - Math.hypot(b.x - P.x, b.y - P.y))
-      .slice(0, stats.stars);
+      .slice(0, stats._stars);
     for (const m of near) bolts.push({ x: P.x, y: P.y - 30, m, hue: Math.random() * 360 });
     glissNote(7);
   }
@@ -353,9 +355,9 @@ export const update = dt => {
     b.y += ((b.m.y - b.y) / d) * 520 * dt;
     sparkle(b.x, b.y, 1, 20);
     if (d < b.m.r + 6) {
-      dnum(b.m.x, b.m.y - b.m.r, stats.starDmg);
+      dnum(b.m.x, b.m.y - b.m.r, stats._sdmg);
       const kb = 130;
-      if (hurt(b.m, stats.starDmg, ((b.m.x - P.x) / d) * kb, ((b.m.y - P.y) / d) * kb, elapsed)) onKill(b.m);
+      if (hurt(b.m, stats._sdmg, ((b.m.x - P.x) / d) * kb, ((b.m.y - P.y) / d) * kb, elapsed)) onKill(b.m);
       else shake = Math.min(0.3, shake + 0.03);
       return false;
     }
@@ -444,8 +446,8 @@ export const draw = () => {
   for (const s of scene) s.f();
 
   // 호른 헤일로 — 유니콘 주위를 도는 별들 (타원 궤도 = 유사 3D)
-  for (let i = 0; i < stats.halo; i++) {
-    const a = haloA + (i * Math.PI * 2) / stats.halo;
+  for (let i = 0; i < stats._halo; i++) {
+    const a = haloA + (i * Math.PI * 2) / stats._halo;
     const hx = P.x + Math.cos(a) * 76;
     const hy = P.y - 16 + Math.sin(a) * 62;
     ctx.globalCompositeOperation = 'lighter';
@@ -981,7 +983,7 @@ const drawHud = () => {
   ctx.strokeText(`✦ ${kills}`, W / 2, 56);
   ctx.fillStyle = '#ffd9e8';
   ctx.fillText(`✦ ${kills}`, W / 2, 56);
-  for (let i = 0; i < stats.maxHp; i++) heart2(24 + i * 26, 26, i < P.hp);
+  for (let i = 0; i < stats._hp; i++) heart2(24 + i * 26, 26, i < P.hp);
   // 스피커 버튼 (우측 상단)
   ctx.fillStyle = 'rgba(15,25,18,.45)';
   ctx.beginPath();

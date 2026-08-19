@@ -1,29 +1,29 @@
 // 런 스탯 + 업그레이드 정의 — 레벨업 3택의 원천.
 
 export const stats = {
-  trailLife: 1.3,  // 잔광 지속 (초)
-  trailW: 1,       // 잔광 폭 배수
-  trailDmg: 4,     // 잔광 틱 데미지
-  stars: 1,        // 별 화살 개수
-  starDmg: 6,
-  speed: 1,        // 이동 배수
-  magnet: 110,     // 조각 흡입 반경
-  maxHp: 3,
-  halo: 0,         // 호른 헤일로 — 선회하는 별 수
-  beam: 0,         // 프리즘 광선 레벨 (0 = 미보유)
+  _life: 1.3,  // 잔광 지속 (초)
+  _w: 1,       // 잔광 폭 배수
+  _dmg: 4,     // 잔광 틱 데미지
+  _stars: 1,        // 별 화살 개수
+  _sdmg: 6,
+  _spd: 1,        // 이동 배수
+  _mag: 110,     // 조각 흡입 반경
+  _hp: 3,
+  _halo: 0,         // 호른 헤일로 — 선회하는 별 수
+  _beam: 0,         // 프리즘 광선 레벨 (0 = 미보유)
 };
 
 export const resetStats = () => {
-  stats.trailLife = 1.3;
-  stats.trailW = 1;
-  stats.trailDmg = 4;
-  stats.stars = 1;
-  stats.starDmg = 6;
-  stats.speed = 1;
-  stats.magnet = 110;
-  stats.maxHp = 3;
-  stats.halo = 0;
-  stats.beam = 0;
+  stats._life = 1.3;
+  stats._w = 1;
+  stats._dmg = 4;
+  stats._stars = 1;
+  stats._sdmg = 6;
+  stats._spd = 1;
+  stats._mag = 110;
+  stats._hp = 3;
+  stats._halo = 0;
+  stats._beam = 0;
 };
 
 /**
@@ -36,16 +36,16 @@ export const resetStats = () => {
 
 /** @type {Upgrade[]} */
 export const UPGRADES = [
-  { name: 'Long Afterglow', desc: 'Trail lasts +35%', icon: '~', apply: () => { stats.trailLife *= 1.35; } },
-  { name: 'Wide Afterglow', desc: 'Trail is wider', icon: '≡', apply: () => { stats.trailW += 0.45; } },
-  { name: 'Burning Colors', desc: 'Trail damage +40%', icon: '☀', apply: () => { stats.trailDmg *= 1.4; } },
-  { name: 'Another Star', desc: '+1 star bolt', icon: '★', apply: () => { stats.stars += 1; }, ok: () => stats.stars < 6 },
-  { name: 'Heavy Stars', desc: 'Star damage +45%', icon: '✦', apply: () => { stats.starDmg *= 1.45; } },
-  { name: 'Gallop', desc: 'Move speed +12%', icon: '»', apply: () => { stats.speed *= 1.12; }, ok: () => stats.speed < 1.6 },
-  { name: 'Shard Charm', desc: 'Pickup radius +45%', icon: '◇', apply: () => { stats.magnet *= 1.45; } },
-  { name: 'Brave Heart', desc: '+1 max heart, heal 1', icon: '♥', apply: () => { stats.maxHp += 1; }, ok: () => stats.maxHp < 6 },
-  { name: 'Horn Halo', desc: '+1 orbiting star', icon: '☆', apply: () => { stats.halo += 1; }, ok: () => stats.halo < 4 },
-  { name: 'Prism Ray', desc: 'Piercing beam +', icon: '⌁', apply: () => { stats.beam += 1; }, ok: () => stats.beam < 4 },
+  { name: 'Long Afterglow', desc: 'Trail lasts +35%', icon: '~', apply: () => { stats._life *= 1.35; } },
+  { name: 'Wide Afterglow', desc: 'Trail is wider', icon: '≡', apply: () => { stats._w += 0.45; } },
+  { name: 'Burning Colors', desc: 'Trail damage +40%', icon: '☀', apply: () => { stats._dmg *= 1.4; } },
+  { name: 'Another Star', desc: '+1 star bolt', icon: '★', apply: () => { stats._stars += 1; }, ok: () => stats._stars < 6 },
+  { name: 'Heavy Stars', desc: 'Star damage +45%', icon: '✦', apply: () => { stats._sdmg *= 1.45; } },
+  { name: 'Gallop', desc: 'Move speed +12%', icon: '»', apply: () => { stats._spd *= 1.12; }, ok: () => stats._spd < 1.6 },
+  { name: 'Shard Charm', desc: 'Pickup radius +45%', icon: '◇', apply: () => { stats._mag *= 1.45; } },
+  { name: 'Brave Heart', desc: '+1 max heart, heal 1', icon: '♥', apply: () => { stats._hp += 1; }, ok: () => stats._hp < 6 },
+  { name: 'Horn Halo', desc: '+1 orbiting star', icon: '☆', apply: () => { stats._halo += 1; }, ok: () => stats._halo < 4 },
+  { name: 'Prism Ray', desc: 'Piercing beam +', icon: '⌁', apply: () => { stats._beam += 1; }, ok: () => stats._beam < 4 },
 ];
 
 /** 조건을 만족하는 업그레이드 중 서로 다른 3개 추첨 */

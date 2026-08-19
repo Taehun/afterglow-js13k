@@ -29,7 +29,7 @@ export const resetPlayer = () => {
   P.y = 0;
   P.vx = 0;
   P.vy = 0;
-  P.hp = stats.maxHp;
+  P.hp = stats._hp;
   P.inv = 0;
   P.facing = 1;
   P.gallop = 0;
@@ -43,7 +43,7 @@ export const updatePlayer = (dx, dy, dt, t) => {
   const len = Math.hypot(dx, dy);
   if (len > 0.01) { dx /= len; dy /= len; }
   if (boost.t > 0) boost.t -= dt;
-  const sp = BASE_SPEED * stats.speed * (boost.t > 0 ? 2 : 1);
+  const sp = BASE_SPEED * stats._spd * (boost.t > 0 ? 2 : 1);
   // 살짝 미끄러지는 가감속 — 활주 손맛
   P.vx += (dx * sp - P.vx) * Math.min(1, dt * 12);
   P.vy += (dy * sp - P.vy) * Math.min(1, dt * 12);
@@ -62,7 +62,7 @@ export const updatePlayer = (dx, dy, dt, t) => {
   if (P.moving && (!last || Math.hypot(P.x - last[0], P.y - last[1]) >= 13)) {
     trail.push([P.x, P.y + 2, t]);
   }
-  while (trail.length && trail[0][2] < t - stats.trailLife) trail.shift();
+  while (trail.length && trail[0][2] < t - stats._life) trail.shift();
   if (trail.length > 90) trail.shift();
 };
 
@@ -70,7 +70,7 @@ export const updatePlayer = (dx, dy, dt, t) => {
  * 점이 잔광 위에 있는가 (판정 반경 포함) @param {number} x @param {number} y
  */
 export const onTrail = (x, y) => {
-  const r = 12 + stats.trailW * 5;
+  const r = 12 + stats._w * 5;
   for (let i = 0; i < trail.length - 1; i++) {
     const [ax, ay] = trail[i];
     if (Math.abs(x - ax) < r && Math.abs(y - ay) < r) return true;
@@ -84,7 +84,7 @@ export const drawTrail = t => {
   if (n < 2) return;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  const bw = 3 * stats.trailW;
+  const bw = 3 * stats._w;
   // 글로우
   ctx.globalCompositeOperation = 'lighter';
   ctx.strokeStyle = 'hsl(310 85% 80% / .14)';
@@ -106,7 +106,7 @@ const band = (off, t, am) => {
     const i0 = Math.floor(((n - 1) * c) / CH);
     const i1 = Math.floor(((n - 1) * (c + 1)) / CH);
     if (i1 - i0 < 1) continue;
-    const age = (t - trail[i0][2]) / stats.trailLife;
+    const age = (t - trail[i0][2]) / stats._life;
     ctx.globalAlpha = Math.max(0, 1 - age) * am;
     ctx.beginPath();
     for (let i = i0; i <= i1; i++) {

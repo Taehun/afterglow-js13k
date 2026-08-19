@@ -44,11 +44,11 @@ export const resetMobs = () => { mobs = []; spawnAcc = 0; eliteT = 75; };
 const make = (type, x, y, elapsed) => {
   const [hp, sp, r] = BASE[type];
   // 시간 경과 체력 보정 — 엘리트는 완만하게 (스펀지화 방지)
-  const mul = 1 + elapsed * (type === ELITE ? 0.012 : 0.02);
+  const mul = 1 + elapsed * (type === ELITE ? 0.012 : 0.011);
   mobs.push({
     type, x, y,
     hp: hp * mul, maxHp: hp * mul,
-    r, sp: sp * (1 + elapsed * 0.0022),
+    r, sp: sp * (1 + elapsed * 0.0015),
     flash: 0, kx: 0, ky: 0,
     seed: Math.random() * 9, tick: 0, lunge: 1 + Math.random() * 2,
   });
@@ -85,7 +85,7 @@ const rollType = e => {
  */
 export const spawnMobs = (dt, elapsed) => {
   const ev = { surge: false, elite: false };
-  const interval = Math.max(0.2, 1.05 - elapsed * 0.0085);
+  const interval = Math.max(0.26, 1.05 - elapsed * 0.006);
   spawnAcc += dt;
   while (spawnAcc > interval && mobs.length < 150) {
     spawnAcc -= interval;
@@ -95,7 +95,7 @@ export const spawnMobs = (dt, elapsed) => {
   const beat = Math.floor(elapsed / 60);
   if (beat > 0 && beat !== Math.floor((elapsed - dt) / 60)) {
     ev.surge = true;
-    for (let i = 0; i < 7 + beat * 2 && mobs.length < 150; i++) ringSpawn(rollType(elapsed), elapsed);
+    for (let i = 0; i < 6 + beat && mobs.length < 150; i++) ringSpawn(rollType(elapsed), elapsed);
   }
   // 엘리트 — 주기 스폰
   eliteT -= dt;
