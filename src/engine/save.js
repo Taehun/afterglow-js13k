@@ -6,7 +6,7 @@
 //   - localStorage.clear() 절대 금지 (다른 게임의 세이브가 전부 날아간다)
 //   - sessionStorage / IndexedDB / Cache Storage를 쓰게 되면 같은 원칙 적용
 
-const NS = 'arclight26:'; // 고유 네임스페이스 (게임: ARCLIGHT)
+const NS = 'arclight26:'; // 고유 네임스페이스 — 초기 코드네임에서 유래, 규칙 4상 대회 중 절대 변경 금지 (세이브 고아화)
 
 /** @param {string} k @param {unknown} v */
 export const save = (k, v) => {

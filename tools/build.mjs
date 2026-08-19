@@ -21,7 +21,7 @@ import { Packer } from 'roadroller';
 
 const BUDGET = 13312; // 13 × 1024 — js13k 하드 리밋
 const WARN_AT = 12800; // 96% — 여기 넘으면 경고
-const TITLE = 'ARCLIGHT';
+const TITLE = 'AFTERGLOW';
 const MAX = process.argv.includes('--max');
 const FAST = process.argv.includes('--fast');
 const LOG = process.argv.includes('--log');

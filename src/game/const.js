@@ -35,24 +35,6 @@ export const insideIsle = (x, y, m = 0) => {
   return Math.abs(cx - x) < 0.5 && Math.abs(cy - y) < 0.5;
 };
 
-// ── 아치 드로잉 ────────────────────────────────────────────────────────────
-export const SNAP = 20;         // 끝점 스냅 그리드 (px)
-export const ARC_MIN = 80;      // 최소 현(chord) 길이
-export const ARC_MAX = 480;     // 최대 현 길이
-export const ARC_H_RATIO = 0.32; // 아치 높이 = 현 길이 × 비율 (20px 단위 반올림)
-export const ROOT_SNAP = 42;    // 끝점이 이 거리 안이면 지면에 뿌리내림 (빠른 드래그 관용)
-export const TAP_MAX = 15;      // 이 미만의 드래그는 탭(지우기)으로 취급
-export const ERASE_R = 34;      // 탭 지우기 판정 반경
-
-// ── 망아지 워커 ────────────────────────────────────────────────────────────
-export const FOAL_VX = 65;      // 걷기 속도 (px/s) — 심사 세션 페이싱 고려
-export const SLIDE_ACC = 1.2;   // 내리막 가속 계수 (아치 모양이 플레이에 의미를 갖게)
-export const SLIDE_DEC = 0.8;   // 오르막 감속 계수
-export const CLIMB = 3.4;       // 샘플당 오를 수 있는 높이 (px) — 초과 시 벽으로 판정
-export const DROP = 4.5;        // 샘플당 따라 내려갈 수 있는 높이 — 초과 시 낙하
-export const GRAV = 780;        // 낙하 중력
-export const KILL_Y = 640;      // 이 아래로 떨어지면 스폰으로 복귀
-
 // ── 파스텔 새벽 팔레트 ─────────────────────────────────────────────────────
 export const SKY_TOP = '#ffdbe7';
 export const SKY_MID = '#e3d9ff';

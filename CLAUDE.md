@@ -74,7 +74,7 @@ docs/IDEAS.md·docs/research/, 폐기된 프로토는 proto/* 태그로 보존
 | `npm run build -- --fast` | Roadroller 생략한 빠른 사이즈 근사치 |
 | `npm run build -- --log` | 결과를 `size-history.csv`에 기록 (회귀 추적) |
 | `npm run smoke` | 빌드 산출물을 실제 브라우저로 검증 (콘솔 에러 0, 애니메이션 구동) |
-| `npm run playtest` | E2E 자동 플레이 — 3레벨 전부 실제로 클리어 + 단계별 스크린샷(.playtest/) |
+| `npm run playtest` | E2E 자동 플레이 — 생존 주행·아이템 5종·레벨업·서지·게임오버 검증 + 스크린샷(.playtest/) |
 | `npm run lint` | ESLint flat config (src=브라우저, tools=노드, vendor 제외) |
 | `npm run typecheck` | JSDoc 기반 tsc strict 체크 |
 | `npm run check` | lint + typecheck + build + smoke 전부 |
@@ -111,8 +111,19 @@ src/
 tools/
 ├── build.mjs          esbuild → terser → Roadroller → HTML 인라인 → zip → advzip
 ├── dev.mjs            esbuild watch + serve
-└── smoke.mjs          playwright-core 스모크 테스트 (Chromium 필수, Firefox 있으면)
+├── smoke.mjs          playwright-core 스모크 테스트 (Chromium 필수, Firefox 있으면)
+└── playtest.mjs       playwright-core E2E — 봇 생존 주행 + 어서션 + 스크린샷(.playtest/)
 ```
+
+## CI/CD
+
+`.github/workflows/ci.yml` — push(main)/PR마다 `lint → typecheck → build(13KB 가드) →
+smoke → playtest` 실행, `dist/game.zip`과 플레이테스트 스크린샷을 아티팩트로 업로드.
+main이 CI를 통과하면 `deploy` job이 **그 game.zip을 그대로 풀어** GitHub Pages에
+배포한다 — 배포본이 곧 제출본: https://taehun.github.io/afterglow-js13k/
+(라이브 최종 확인 용도). Playwright 브라우저는 CDN 다운로드와 OS 의존성(apt)을
+분리해 설치하고, 캐시 히트 시 apt를 건너뛴다(미러가 느린 날 타임아웃 방지 —
+각 스텝에 timeout-minutes 있음).
 
 프레임 흐름: `loop.start(update, draw)` → update는 고정 STEP으로 0~N회 실행되고
 **각 update 틱 끝에 `input.endFrame()`**(justDown류 초기화, main.js가 배선) →
@@ -129,12 +140,28 @@ draw는 rAF당 1회. endFrame을 렌더 프레임 끝으로 옮기면 안 된다
   자동 선택**한다 — Roadroller 출력은 고엔트로피라 zip이 못 줄이므로 코드가
   작을 땐 terser 쪽이 이긴다(raw 크기로 비교하면 틀린다). advzip은
   `brew install advancecomp`.
+- **Roadroller는 결정적이다 (파라미터 캐시)**: -O1 랜덤 탐색은 실행마다 ±20B
+  흔들려 "CI에서만 예산 초과" 사고를 낸다. `build:max`(-O2)가 찾은 최적
+  파라미터를 `tools/roadroller-params.json`에 캐시하고 평소 빌드는 그걸로
+  `optimize(0)` 압축한다. **코드가 크게 바뀌면 `npm run build:max`로 캐시를
+  갱신**할 것 (캐시가 낡아도 유효하지만 서서히 압축률이 나빠진다).
 - **프로퍼티 맹글링 컨벤션**: `_`로 시작하는 객체 프로퍼티만 terser가 맹글한다.
   자주 쓰는 내부 객체 프로퍼티는 `_x`처럼 짓고, DOM/표준 API 이름과 겹치는
   `_`프리픽스는 만들지 않는다. (모듈 레벨 함수/변수는 toplevel mangle로 자동 처리)
 - 압축(deflate/Roadroller)은 **반복 패턴**에 강하다: 비슷한 코드는 비슷한 형태로
   쓰고, 데이터는 문자열 테이블/배열 리터럴로 모으고, Math 함수는 지역 별칭보다
   그대로 반복하는 편이 나을 때가 많다 — 추측하지 말고 `npm run size`로 전후 비교.
+  **실측 반례(2026-08-19)**: `Math.PI*2` 66곳을 TAU 상수로 묶는 골프 → 오히려
+  **+36B** (반복이 사라져 압축률 악화) → 폐기. 골프 직관을 실측 없이 믿지 말 것.
+- terser는 `ecma: 2020` + `booleans_as_integers`(소스에 `===true`류 엄격비교가
+  없어야 안전) + `unsafe_methods` + `hoist_funs`까지 켜져 있고, HTML 셸은
+  `canvas{position:fixed;inset:0}`로 축소돼 있다 (합계 78B 절감분).
+- 브라우저는 `<link rel=icon>`이 없으면 자동으로 `/favicon.ico`를 요청해 **404
+  콘솔 에러**를 낸다(규칙 3 직격 — file:// 스모크에선 안 보이고 실서버에서만 발생).
+  HTML 셸의 `<link rel=icon href=data:,>`가 이를 막는다 — 셸 수정 시 빠뜨리지 말 것.
+- 음악 제작 파이프라인: ElevenLabs Music API로 레퍼런스 후보 병렬 생성 → FFT로
+  키/템포/베이스/멜로디 추출 → `src/game/music.js` 시퀀서 데이터로 이식 → 헤드리스
+  엔진 녹음으로 지표 일치 검증. 새 트랙(보스/엔딩)이 필요하면 같은 절차 재사용.
 - 에셋은 전부 코드로 생성: 그래픽 = 프로시저럴 캔버스/SVG path 문자열/셰이더,
   사운드 = ZzFX 파라미터(https://killedbyapixel.github.io/ZzFX/ 에서 디자인),
   음악 = 필요 시 ZzFXM 추가. 비트맵/오디오 파일은 넣지 않는다.
