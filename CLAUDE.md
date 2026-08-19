@@ -5,8 +5,8 @@ js13kGames 2026 (15회차) 참가 프로젝트. 테마: **"Unicorns and Rainbows
 스토리: "폭풍이 세상의 색을 삼켰다. 달려라, 마지막 유니콘 — 너의 잔광이
 색을 되태운다." 달린 자리의 잔광이 그림자 무리를 태우고(정지 = 화력 0),
 지나간 들판은 색을 되찾는다(blooms). 아케이드/퍼즐 대안 탐색 이력과 근거는
-docs/IDEAS.md·docs/research/, 폐기된 프로토는 arclight/looplight/sunshower
-브랜치에 보존.
+docs/IDEAS.md·docs/research/, 폐기된 프로토는 proto/* 태그로 보존
+(proto/arclight·looplight·sunshower·afterglow — 브랜치는 정리함, main만 유지).
 
 모든 규칙은 2026-08-18에 공식 페이지(https://js13kgames.com/2026/rules)에서
 직접 확인한 원문 기준이다.

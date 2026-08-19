@@ -77,7 +77,7 @@ onFirstInput(init);
  */
 const pluck = (f, t, vol = 0.16, dur = 0.9, type = 'triangle', dry = 0) => {
   if (!ac || !master || !delaySend) return;
-  if (t < ac.currentTime) t = ac.currentTime; // 음수/과거 시각 방어 — 콘솔 에러 0
+  t = Math.max(t, ac.currentTime); // 음수/과거 시각 방어 — 콘솔 에러 0
   const voices = type === 'triangle'
     ? [[f, vol, dur, 'triangle'], [f * 1.006, vol * 0.5, dur * 0.9, 'triangle'],
        [f * 2, vol * 0.28, dur * 0.5, 'sine'], [f * 3.01, vol * 0.09, dur * 0.28, 'sine']]
@@ -91,7 +91,7 @@ const pluck = (f, t, vol = 0.16, dur = 0.9, type = 'triangle', dry = 0) => {
     g.gain.linearRampToValueAtTime(/** @type {number} */ (vv), t + 0.005);
     g.gain.exponentialRampToValueAtTime(0.0001, t + /** @type {number} */ (vd));
     o.connect(g);
-    g.connect(dry && fxm ? fxm : master);
+    g.connect((dry && fxm) || master);
     if (!dry) g.connect(delaySend);
     o.start(t);
     o.stop(t + /** @type {number} */ (vd) + 0.05);

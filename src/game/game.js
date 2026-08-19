@@ -1025,7 +1025,7 @@ const drawHud = () => {
     ctx.roundRect(W - 46, 56, 24, 76, 12);
     ctx.fill();
     ctx.lineWidth = 5;
-    ctx.strokeStyle = 'rgba(255,255,255,.3)';
+    ctx.strokeStyle = '#fff5';
     ctx.beginPath();
     ctx.moveTo(W - 34, 66);
     ctx.lineTo(W - 34, 122);

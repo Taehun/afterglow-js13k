@@ -52,7 +52,7 @@ if (TEST) {
   fs.mkdirSync(td, { recursive: true });
   fs.writeFileSync(path.join(td, 'index.html'),
     `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,user-scalable=no">` +
-    `<title>${TITLE}</title>` +
+    `<title>${TITLE}</title><link rel=icon href=data:,>` +
     `<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100%;height:100%;touch-action:none}</style>` +
     `<canvas id=c></canvas><script>${rawJs}</script>`);
   if (!QUIET) console.log('dist-test/index.html (테스트 훅 포함) 생성');
@@ -99,7 +99,7 @@ if (!FAST) {
 /** @param {string} js */
 const wrapHtml = js =>
   `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,user-scalable=no">` +
-  `<title>${TITLE}</title>` +
+  `<title>${TITLE}</title><link rel=icon href=data:,>` +
   `<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100%;height:100%;touch-action:none}</style>` +
   `<canvas id=c></canvas><script>${js}</script>`;
 
