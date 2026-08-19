@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/Taehun/afterglow-js13k/actions/workflows/ci.yml/badge.svg)](https://github.com/Taehun/afterglow-js13k/actions/workflows/ci.yml)
 
+**[▶ Play it now](https://taehun.github.io/afterglow-js13k/)** — the exact 13 kB submission build, auto-deployed from `main`.
+
 > The storm swallowed the world's colors.
 > Run, last unicorn — your afterglow brings them back.
 

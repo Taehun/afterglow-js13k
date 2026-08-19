@@ -88,3 +88,31 @@ jobs:
           name: playtest-shots
           path: .playtest/
           if-no-files-found: ignore
+
+  # main 푸시가 CI를 통과하면 제출 zip 내용물 그대로를 GitHub Pages에 배포
+  # → https://taehun.github.io/afterglow-js13k/ 에서 바로 플레이 (배포본 = 제출본)
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: game-zip
+
+      - name: Unzip game into site root
+        run: mkdir site && unzip -q game.zip -d site && ls -la site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
