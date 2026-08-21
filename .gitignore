@@ -6,3 +6,4 @@ dist/
 .playtest/
 dist-test/
 .env
+press/
